@@ -176,9 +176,6 @@ enum
 	LED_RGB_PL9823,
 
 	UART_TX,
-
-	FAST_ENCODER_2_A,	// Fast Encoder 2 channel A -- restricted to PB6 (TIM4 CH1)
-	FAST_ENCODER_2_B,	// Fast Encoder 2 channel B -- restricted to PB7 (TIM4 CH2)
 };
 typedef int8_t pin_t;
 
