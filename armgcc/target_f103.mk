@@ -40,6 +40,7 @@ TARGET_C_INCLUDES = \
 TARGET_APP_C_SOURCES = \
 ../board/f103_bluepill/Src/board_pins.c \
 ../board/f103_bluepill/Src/board_flash.c \
+../board/f103_bluepill/Src/board_dfu.c \
 ../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/stm32f10x_usart.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/misc.c \

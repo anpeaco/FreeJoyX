@@ -870,7 +870,8 @@ static const dev_config_t init_config =
 };
 
 
-void EnterBootloader (void);
+/* EnterBootloader(void) moved to board/f103_bluepill/Src/board_dfu.c
+ * as Board_EnterDfu(). Include "board_dfu.h" if you need it. */
 
 /* ########################## Assert Selection ############################## */
 /**

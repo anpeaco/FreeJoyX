@@ -25,6 +25,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
+#include "board_dfu.h"
 #include "periphery.h"
 #include "config.h"
 #include "analog.h"
@@ -52,9 +53,11 @@ volatile uint8_t bootloader = 0;
   */
 int main(void)
 {	
-	// Relocate vector table
-	WRITE_REG(SCB->VTOR, 0x8002000);
-	
+	// Relocate vector table to the application's load address. Wrapped
+	// in the BSP so the F411 port can swap in its own offset (S5-relative
+	// rather than F103's 8-KB-bootloader-relative).
+	Board_RelocateVectorTable();
+
 	SysTick_Init();
 	
 	// getting configuration from flash memory
@@ -115,7 +118,7 @@ USB_HW_Init();
 			PowerOff();
 			USB_HW_DeInit();
 			Delay_ms(500);	
-			EnterBootloader();
+			Board_EnterDfu();
 		}
   }
 }
@@ -125,24 +128,9 @@ USB_HW_Init();
   * @param  None
   * @retval None
   */
-void EnterBootloader (void)
-{
-	/* Enable the power and backup interface clocks by setting the
-	 * PWREN and BKPEN bits in the RCC_APB1ENR register
-	 */
-	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_BKPEN | RCC_APB1ENR_PWREN);
-
-	/* Enable write access to the backup registers and the
-		* RTC.
-		*/
-	SET_BIT(PWR->CR, PWR_CR_DBP);
-	WRITE_REG(BKP->DR4, 0x424C);
-	CLEAR_BIT(PWR->CR, PWR_CR_DBP);
-	
-	CLEAR_BIT(RCC->APB1ENR, RCC_APB1ENR_BKPEN | RCC_APB1ENR_PWREN);
-	
-	NVIC_SystemReset();
-}
+/* EnterBootloader() moved to board/f103_bluepill/Src/board_dfu.c as
+ * Board_EnterDfu() in the F411 BSP-seam refactor (Phase 1). The single
+ * caller above now invokes Board_EnterDfu() directly. */
 
 
 /**
