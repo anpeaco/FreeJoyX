@@ -61,17 +61,20 @@ typedef struct {
 } fast_encoder_hw_t;
 
 static const fast_encoder_hw_t fast_encoder_hw[MAX_FAST_ENCODER_NUM] = {
-	{ TIM1, 8, 9 },		// Encoder 1: TIM1 on PA8/PA9
+	{ TIM1,  8,  9 },	// Encoder 1: TIM1 on PA8/PA9 (pins[] slots 8, 9)
+	{ TIM4, 17, 18 },	// Encoder 2: TIM4 on PB6/PB7 (pins[] slots 17, 18)
 };
 
 static void EncoderFastInit(uint8_t fast_idx, dev_config_t * p_dev_config)
 {
 	TIM_TypeDef* timer = fast_encoder_hw[fast_idx].timer;
 
-	// Enable the timer's bus clock. TIM1 is on APB2; additional fast-encoder
-	// timers (TIM4 on APB1, etc.) get added here when MAX_FAST_ENCODER_NUM grows.
+	// Enable the timer's bus clock. Different timers live on different APB
+	// buses (TIM1 on APB2, TIM4 on APB1), so dispatch on the timer pointer.
 	if (timer == TIM1) {
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);
+	} else if (timer == TIM4) {
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
 	}
 
 	TIM_TimeBaseInitTypeDef base;
