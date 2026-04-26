@@ -84,7 +84,7 @@ static void EncoderFastInit(uint8_t fast_idx, dev_config_t * p_dev_config)
 	base.TIM_CounterMode = TIM_CounterMode_Up | TIM_CounterMode_Down;
 	TIM_TimeBaseInit(timer, &base);
 
-	switch (p_dev_config->encoders[fast_idx])
+	switch (p_dev_config->fast_encoders[fast_idx].mode)
 	{
 		default:
 		case ENCODER_CONF_2x:
@@ -389,18 +389,19 @@ void EncodersInit(dev_config_t * p_dev_config)
 		encoders_state[i].time_last = 0;
 	}
 
-	// Bring up each fast encoder whose configured pin pair matches its hardware
-	// slot. Fast encoders occupy encoders_state[0..MAX_FAST_ENCODER_NUM-1].
+	// Bring up each fast encoder whose enabled flag is set in dev_config.
+	// Fast encoders occupy encoders_state[0..MAX_FAST_ENCODER_NUM-1]. The
+	// configurator UI is responsible for keeping pins[] role assignments in
+	// sync with the .enabled flag (it sets pins[pa] = FAST_ENCODER (or
+	// FAST_ENCODER_2_A/B for slot 1) atomically with .enabled = 1) so
+	// periphery.c configures the GPIOs as alternate-function inputs for the
+	// timer.
 	for (uint8_t fi = 0; fi < MAX_FAST_ENCODER_NUM; fi++)
 	{
-		uint8_t pa = fast_encoder_hw[fi].pin_a_idx;
-		uint8_t pb = fast_encoder_hw[fi].pin_b_idx;
-
-		if (p_dev_config->pins[pa] == FAST_ENCODER &&
-		    p_dev_config->pins[pb] == FAST_ENCODER)
+		if (p_dev_config->fast_encoders[fi].enabled)
 		{
-			encoders_state[fi].pin_a = pa;
-			encoders_state[fi].pin_b = pb;
+			encoders_state[fi].pin_a = fast_encoder_hw[fi].pin_a_idx;
+			encoders_state[fi].pin_b = fast_encoder_hw[fi].pin_b_idx;
 
 			EncoderFastInit(fi, p_dev_config);
 		}

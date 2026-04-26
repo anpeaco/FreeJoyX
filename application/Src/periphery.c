@@ -509,7 +509,9 @@ void IO_Init (dev_config_t * p_dev_config)
 			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
 			pin_config[i].port->ODR |=  pin_config[i].pin;
 		}
-		else if (p_dev_config->pins[i] == FAST_ENCODER && (i == 8 || i == 9))		// PA8 or PA9
+		else if ((p_dev_config->pins[i] == FAST_ENCODER && (i == 8 || i == 9)) ||	// Encoder 1 on PA8/PA9 (TIM1)
+		         (p_dev_config->pins[i] == FAST_ENCODER_2_A && i == 17) ||			// Encoder 2 channel A on PB6 (TIM4 CH1)
+		         (p_dev_config->pins[i] == FAST_ENCODER_2_B && i == 18))			// Encoder 2 channel B on PB7 (TIM4 CH2)
 		{
 			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
 			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
