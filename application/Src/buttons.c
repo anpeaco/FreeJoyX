@@ -593,12 +593,20 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				else if (!p_button_state->curr_physical_state)	// IDLE state
 				{
 					p_button_state->current_state = p_button_state->off_state;
-				}			
+				}
 				break;
-				
+
+			case LOGIC:
+				// Stage 3 stub. Operator evaluation, source-A/B reads, and
+				// debounce land in subsequent commits. For now a LOGIC-typed
+				// slot just stays low so the firmware doesn't react to
+				// uninitialised op / src_b values.
+				p_button_state->current_state = 0;
+				break;
+
 			default:
 				break;
-		}		
+		}
 }
 
 /**
