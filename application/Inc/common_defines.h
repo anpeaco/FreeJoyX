@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x1733			// v1.7.3b3 (FreeJoyX: button_t gains LOGIC type, op, src_b; type widened to full byte)
+#define FIRMWARE_VERSION					0x1740			// v1.7.4 (FreeJoyX: forces factory-reset across the button_t layout change -- 0x173x mask-collides with prior versions, 0x1740 trips the mask check at main.c:64)
 #define USED_PINS_NUM							30					// constant for BluePill and BlackPill boards
 #define MAX_AXIS_NUM							8						// max 8
 #define MAX_BUTTONS_NUM						128					// power of 2, max 128
