@@ -1,13 +1,17 @@
+# Top-level dispatcher. Pick the chip family with TARGET={f103|f411};
+# defaults to f103 so a bare `make` keeps working as before.
+TARGET ?= f103
+
 all:
-	make -f makefile.app 
-	make -f makefile.boot
-	
+	$(MAKE) -f makefile.app TARGET=$(TARGET)
+	$(MAKE) -f makefile.boot TARGET=$(TARGET)
+
 app:
-	make -f makefile.app 
-	
+	$(MAKE) -f makefile.app TARGET=$(TARGET)
+
 boot:
-	make -f makefile.boot 
-	
+	$(MAKE) -f makefile.boot TARGET=$(TARGET)
+
 clean:
-	make -f makefile.app clean
-	make -f makefile.boot clean
+	$(MAKE) -f makefile.app clean TARGET=$(TARGET)
+	$(MAKE) -f makefile.boot clean TARGET=$(TARGET)

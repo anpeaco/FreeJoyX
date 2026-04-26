@@ -27,11 +27,30 @@ or
 > make clean
 
 
-After building binaries and hex files are place in build sub-directories:
+After building, binaries and hex files are placed in per-target build
+sub-directories:
 
-/build/app/Bootlooader.bin
-/build/app/FreeJoy.bin
-/build/app/FreeJoy.hex
+/build/<target>/app/FreeJoy.bin
+/build/<target>/app/FreeJoy.hex
+/build/<target>/boot/Bootloader.bin
+
+The chip family is selected via the TARGET=<name> variable, defaulting to
+f103. The chip-specific flags / driver source lists / linker scripts /
+startup file live in target_<name>.mk; the makefiles themselves stay
+target-agnostic.
+
+5) Selecting the target chip family:
+
+> make                         (defaults to TARGET=f103, output under build/f103/...)
+
+> make TARGET=f103             (explicit; same result as above)
+
+> make TARGET=f411             (planned for the F411 BlackPill port; stubbed
+                               -- target_f411.mk lands in Phase 2 of the port,
+                               currently fails with a clear "no such file"
+                               error)
+
+> make TARGET=f103 clean       (cleans only the f103 build tree)
 
 
 II. Flashing binaries to MCU
