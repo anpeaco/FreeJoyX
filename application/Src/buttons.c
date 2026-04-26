@@ -601,8 +601,9 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				// Boolean expression over physical button inputs. Source A
 				// is carried in the slot's physical_num (reused field);
 				// Source B is in src_b (binary ops) and ignored for NOT.
-				// Debounce comes in Stage 5; for now the result is applied
-				// immediately each tick.
+				// Debounce duration comes from the slot's delay_timer
+				// field, mapped onto button_timerN_ms; BUTTON_TIMER_OFF
+				// means commit immediately each tick.
 				int8_t a_idx = p_dev_config->buttons[num].physical_num;
 				int8_t b_idx = p_dev_config->buttons[num].src_b;
 
@@ -610,20 +611,56 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				uint8_t a = (a_idx >= 0 && a_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[a_idx] != 0) : 0;
 				uint8_t b = (b_idx >= 0 && b_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[b_idx] != 0) : 0;
 
-				uint8_t result = 0;
+				uint8_t computed = 0;
 				switch (p_dev_config->buttons[num].op)
 				{
-					case LOGIC_OP_AND:         result =  (a &&  b); break;
-					case LOGIC_OP_OR:          result =  (a ||  b); break;
-					case LOGIC_OP_NOT:         result =  !a;        break;
-					case LOGIC_OP_NOR:         result = !(a ||  b); break;
-					case LOGIC_OP_NAND:        result = !(a &&  b); break;
-					case LOGIC_OP_XOR:         result =   a ^   b;  break;
-					case LOGIC_OP_A_AND_NOT_B: result =  (a && !b); break;
-					default:                   result = 0;          break;
+					case LOGIC_OP_AND:         computed =  (a &&  b); break;
+					case LOGIC_OP_OR:          computed =  (a ||  b); break;
+					case LOGIC_OP_NOT:         computed =  !a;        break;
+					case LOGIC_OP_NOR:         computed = !(a ||  b); break;
+					case LOGIC_OP_NAND:        computed = !(a &&  b); break;
+					case LOGIC_OP_XOR:         computed =   a ^   b;  break;
+					case LOGIC_OP_A_AND_NOT_B: computed =  (a && !b); break;
+					default:                   computed = 0;          break;
 				}
 
-				p_button_state->current_state = result;
+				// Resolve the debounce window from delay_timer, mirroring
+				// the pattern other button types use for press_timer.
+				uint16_t debounce_ms = 0;
+				switch (p_dev_config->buttons[num].delay_timer)
+				{
+					case BUTTON_TIMER_1: debounce_ms = p_dev_config->button_timer1_ms; break;
+					case BUTTON_TIMER_2: debounce_ms = p_dev_config->button_timer2_ms; break;
+					case BUTTON_TIMER_3: debounce_ms = p_dev_config->button_timer3_ms; break;
+					default:             debounce_ms = 0;                              break;	// BUTTON_TIMER_OFF
+				}
+
+				if (debounce_ms == 0)
+				{
+					// No debounce configured -- commit immediately.
+					p_button_state->current_state = computed;
+					p_button_state->delay_act = BUTTON_ACTION_IDLE;
+				}
+				else if (computed == p_button_state->current_state)
+				{
+					// Output already matches; cancel any pending transition.
+					p_button_state->delay_act = BUTTON_ACTION_IDLE;
+				}
+				else if (p_button_state->delay_act != BUTTON_ACTION_DELAY ||
+				         p_button_state->on_state != computed)
+				{
+					// Start (or re-start) the debounce window toward the new
+					// computed value. on_state holds the pending output.
+					p_button_state->delay_act = BUTTON_ACTION_DELAY;
+					p_button_state->on_state  = computed;
+					p_button_state->time_last = millis;
+				}
+				else if (millis - p_button_state->time_last >= debounce_ms)
+				{
+					// Stable for long enough -- commit the change.
+					p_button_state->current_state = p_button_state->on_state;
+					p_button_state->delay_act     = BUTTON_ACTION_IDLE;
+				}
 				break;
 			}
 
