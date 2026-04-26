@@ -403,8 +403,8 @@ uint8_t Composite_StringVendor[Composite_SIZ_STRING_VENDOR] =
   {
     Composite_SIZ_STRING_VENDOR, /* Size of Vendor string */
     USB_STRING_DESCRIPTOR_TYPE,  /* bDescriptorType*/
-    /* Manufacturer: "STMicroelectronics" */
-    'F', 0, 'r', 0, 'e', 0, 'e', 0, 'J', 0, 'o', 0, 'y', 0
+    /* Manufacturer: "FreeJoyX" */
+    'F', 0, 'r', 0, 'e', 0, 'e', 0, 'J', 0, 'o', 0, 'y', 0, 'X', 0
   };
 
 uint8_t Composite_StringProduct[Composite_SIZ_STRING_PRODUCT] =
