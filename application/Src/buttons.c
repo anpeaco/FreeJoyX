@@ -134,10 +134,12 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 	
 	// Center POVs has forced delay
 	if ( tmp_delay_time == 0 && (p_dev_config->buttons[num].type == POV1_CENTER ||
-			p_dev_config->buttons[num].type == POV2_CENTER))
-	{	
+			p_dev_config->buttons[num].type == POV2_CENTER ||
+			p_dev_config->buttons[num].type == POV3_CENTER ||
+			p_dev_config->buttons[num].type == POV4_CENTER))
+	{
 		tmp_delay_time = 100;
-	}		
+	}
 		
 	// set max delay timer for sequential and radio buttons // heroviy kostil`, need if for check all seq buttons for types of timings
 //	if (p_dev_config->buttons[num].delay_timer && 
@@ -192,6 +194,8 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 			case BUTTON_NORMAL:
 			case POV1_CENTER:
 			case POV2_CENTER:
+			case POV3_CENTER:
+			case POV4_CENTER:
 				if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
 					// nop
@@ -333,27 +337,22 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 			// block center button on direction state change
 				if (p_button_state->curr_physical_state != p_button_state->prev_physical_state)
 				{
-					if (pov_group == 0)
-					{
-						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)	
-						{
-							if (p_dev_config->buttons[i].type == POV1_CENTER)	
-							{
-								logical_buttons_state[i].delay_act = BUTTON_ACTION_BLOCK;
-								logical_buttons_state[i].current_state = 0;
-								logical_buttons_state[i].time_last = millis;		 
-							}
-						}
+					button_type_t center_type;
+					switch (pov_group) {
+						case 0: center_type = POV1_CENTER; break;
+						case 1: center_type = POV2_CENTER; break;
+						case 2: center_type = POV3_CENTER; break;
+						case 3: center_type = POV4_CENTER; break;
+						default: center_type = 0; break;
 					}
-					else if (pov_group == 1)
-					{
-						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)	
+					if (center_type != 0) {
+						for (uint8_t i = 0; i < MAX_BUTTONS_NUM; i++)
 						{
-							if (p_dev_config->buttons[i].type == POV2_CENTER)	
+							if (p_dev_config->buttons[i].type == center_type)
 							{
 								logical_buttons_state[i].delay_act = BUTTON_ACTION_BLOCK;
 								logical_buttons_state[i].current_state = 0;
-								logical_buttons_state[i].time_last = millis;		 
+								logical_buttons_state[i].time_last = millis;
 							}
 						}
 					}
@@ -407,27 +406,22 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				// turn off POV center button if one of directions is pressed
 				if (pov_buf[pov_group] != 0)
 				{
-					if (pov_group == 0)
-					{
-						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)	
-						{
-							if (p_dev_config->buttons[i].type == POV1_CENTER)	
-							{
-								logical_buttons_state[i].delay_act = BUTTON_ACTION_BLOCK;
-								logical_buttons_state[i].current_state = 0;
-								logical_buttons_state[i].time_last = millis;		 
-							}
-						}
+					button_type_t center_type;
+					switch (pov_group) {
+						case 0: center_type = POV1_CENTER; break;
+						case 1: center_type = POV2_CENTER; break;
+						case 2: center_type = POV3_CENTER; break;
+						case 3: center_type = POV4_CENTER; break;
+						default: center_type = 0; break;
 					}
-					else if (pov_group == 1)
-					{
-						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)	
+					if (center_type != 0) {
+						for (uint8_t i = 0; i < MAX_BUTTONS_NUM; i++)
 						{
-							if (p_dev_config->buttons[i].type == POV2_CENTER)	
+							if (p_dev_config->buttons[i].type == center_type)
 							{
 								logical_buttons_state[i].delay_act = BUTTON_ACTION_BLOCK;
 								logical_buttons_state[i].current_state = 0;
-								logical_buttons_state[i].time_last = millis;	 
+								logical_buttons_state[i].time_last = millis;
 							}
 						}
 					}
