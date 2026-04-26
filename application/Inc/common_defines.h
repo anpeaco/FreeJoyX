@@ -28,13 +28,10 @@
 #define AXIS_CENTER_VALUE					(AXIS_MIN_VALUE + (AXIS_MAX_VALUE-AXIS_MIN_VALUE)/2)
 #define AXIS_FULLSCALE						(AXIS_MAX_VALUE - AXIS_MIN_VALUE + 1)
 
-// same in usb_hw.h
-#define MAX_PAGE									64
-#define FLASH_PAGE_SIZE						1024
-#define FLASH_PAGE_END_ADDR				(0x8000000 + (MAX_PAGE * FLASH_PAGE_SIZE))
-#define CONFIG_PAGE_COUNT					2		// resize config here
-#define CONFIG_ADDR								(FLASH_PAGE_END_ADDR - (CONFIG_PAGE_COUNT * FLASH_PAGE_SIZE))
-//#define CONFIG_ADDR								(0x0800F800)//(0x0800FC00)
+// Flash storage layout (MAX_PAGE / FLASH_PAGE_SIZE / CONFIG_ADDR / etc.)
+// moved to board/<chip>/Inc/board_config.h as part of the F411 BSP-seam
+// refactor. The constants are inherently chip-specific.
+#include "board_config.h"
 
 
 enum
