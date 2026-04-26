@@ -17,16 +17,19 @@ TARGET_FLOAT_ABI =
 #######################################
 TARGET_C_DEFS = \
 -DUSE_STDPERIPH_DRIVER \
--DSTM32F10X_MD
+-DSTM32F10X_MD \
+-DBOARD_F103_BLUEPILL
 
 #######################################
-# Vendor / driver include paths
+# Vendor / driver / BSP include paths
 #######################################
 TARGET_C_INCLUDES = \
 -I../Drivers/CMSIS/CM3/CoreSupport \
 -I../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x \
 -I../Drivers/STM32F10x_StdPeriph_Driver/inc \
--I../Drivers/STM32_USB-FS-Device_Driver/inc
+-I../Drivers/STM32_USB-FS-Device_Driver/inc \
+-I../board/common/Inc \
+-I../board/f103_bluepill/Inc
 
 #######################################
 # Vendor / driver C sources used by the APPLICATION
