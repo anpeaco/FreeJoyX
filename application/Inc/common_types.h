@@ -228,8 +228,30 @@ enum
 	// without a factory-reset.
 	POV3_CENTER,
 	POV4_CENTER,
+
+	// Logical (boolean-expression-driven) button. When type == LOGIC, the
+	// existing physical_num field carries Source A and the existing
+	// delay_timer field selects the debounce timer. Two new fields (op and
+	// src_b) hold the operator and Source B. See F103_LOGIC_PLAN.md.
+	LOGIC,
 };
 typedef uint8_t button_type_t;
+
+/******************** LOGIC OPERATORS **********************/
+// Operator codes for type=LOGIC slots. Order MUST match the configurator's
+// mirror in FreeJoyConfiguratorQtX/src/common_types.h byte-for-byte.
+enum
+{
+	LOGIC_OP_AND = 0,
+	LOGIC_OP_OR,
+	LOGIC_OP_NOT,
+	LOGIC_OP_NOR,
+	LOGIC_OP_NAND,
+	LOGIC_OP_XOR,
+	LOGIC_OP_A_AND_NOT_B,
+	LOGIC_OP_COUNT,
+};
+typedef uint8_t logic_op_t;
 
 enum
 {
