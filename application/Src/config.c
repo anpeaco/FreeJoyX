@@ -23,6 +23,7 @@
   */
 
 #include "config.h"
+#include "board_flash.h"
 
 
 app_config_t app_config;
@@ -45,19 +46,18 @@ void DevConfigSet (dev_config_t * p_dev_config)
 		return;
 
 	prog_addr = CONFIG_ADDR;
-	
-	FLASH_Unlock();
+
+	ConfigFlash_Unlock();
 	for (int i=0; i<CONFIG_PAGE_COUNT; i++)
 	{
-		FLASH_ErasePage(prog_addr + i * FLASH_PAGE_SIZE);
+		ConfigFlash_ErasePage(prog_addr + i * FLASH_PAGE_SIZE);
 	}
-	
+
 	for (int i=0; i<sizeof(dev_config_t); i+=4)
 	{
-		FLASH_ProgramWord(prog_addr+i, *(uint32_t *)(data_addr + i)); 
-
+		ConfigFlash_WriteWord(prog_addr+i, *(uint32_t *)(data_addr + i));
 	}
-	FLASH_Lock();
+	ConfigFlash_Lock();
 }
 
 void DevConfigGet (dev_config_t * p_dev_config)
