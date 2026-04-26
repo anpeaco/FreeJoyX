@@ -50,39 +50,9 @@
 volatile int64_t Ticks;
 volatile uint32_t TimingDelay;
 
-pin_config_t pin_config[USED_PINS_NUM] =
-        {
-                {GPIOA, GPIO_Pin_0,  0},                    // 0
-                {GPIOA, GPIO_Pin_1,  1},                    // 1
-                {GPIOA, GPIO_Pin_2,  2},                    // 2
-                {GPIOA, GPIO_Pin_3,  3},                    // 3
-                {GPIOA, GPIO_Pin_4,  4},                    // 4
-                {GPIOA, GPIO_Pin_5,  5},                    // 5
-                {GPIOA, GPIO_Pin_6,  6},                    // 6
-                {GPIOA, GPIO_Pin_7,  7},                    // 7
-                {GPIOA, GPIO_Pin_8,  8},                    // 8
-                {GPIOA, GPIO_Pin_9,  9},                    // 9
-                {GPIOA, GPIO_Pin_10, 10},                // 10
-                {GPIOA, GPIO_Pin_15, 15},                // 11
-                {GPIOB, GPIO_Pin_0,  0},                    // 12
-                {GPIOB, GPIO_Pin_1,  1},                    // 13
-                {GPIOB, GPIO_Pin_3,  3},                    // 14
-                {GPIOB, GPIO_Pin_4,  4},                    // 15
-                {GPIOB, GPIO_Pin_5,  5},                    // 16
-                {GPIOB, GPIO_Pin_6,  6},                    // 17
-                {GPIOB, GPIO_Pin_7,  7},                    // 18
-                {GPIOB, GPIO_Pin_8,  8},                    // 19
-                {GPIOB, GPIO_Pin_9,  9},                    // 20
-                {GPIOB, GPIO_Pin_10, 10},                // 21
-                {GPIOB, GPIO_Pin_11, 11},                // 22
-                {GPIOB, GPIO_Pin_12, 12},                // 23
-                {GPIOB, GPIO_Pin_13, 13},                // 24
-                {GPIOB, GPIO_Pin_14, 14},                // 25
-                {GPIOB, GPIO_Pin_15, 15},                // 26
-                {GPIOC, GPIO_Pin_13, 13},                // 27
-                {GPIOC, GPIO_Pin_14, 14},                // 28
-                {GPIOC, GPIO_Pin_15, 15},                // 29
-        };
+/* pin_config[] moved to board/f103_bluepill/Src/board_pins.c as part of the
+ * F411 BSP-seam refactor (Phase 1). The extern declaration in periphery.h
+ * still resolves it. */
 
 
 /**

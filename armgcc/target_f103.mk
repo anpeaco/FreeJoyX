@@ -33,8 +33,12 @@ TARGET_C_INCLUDES = \
 
 #######################################
 # Vendor / driver C sources used by the APPLICATION
+#
+# Board BSP sources (board/f103_bluepill/Src/*.c) are co-located with the
+# vendor drivers below since they're equally chip-specific.
 #######################################
 TARGET_APP_C_SOURCES = \
+../board/f103_bluepill/Src/board_pins.c \
 ../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/stm32f10x_usart.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/misc.c \
