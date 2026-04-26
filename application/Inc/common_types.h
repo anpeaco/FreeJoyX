@@ -265,15 +265,26 @@ typedef uint8_t button_timer_t;
 
 typedef struct button_t
 {
+	// physical_num: physical button input index. When type == LOGIC this
+	// field carries Source A.
 	int8_t					physical_num;
-	button_type_t 	type : 5;
+	// type: full byte (was : 5 prior to v1.7.3b3). 5-bit packing capped
+	// values at 31 and silently truncated additions like POV4_CENTER and
+	// LOGIC; widened here to give headroom for future button types.
+	button_type_t		type;
+	// src_b: Source B for type == LOGIC && op is binary; -1 / unused otherwise.
+	int8_t					src_b;
+
 	uint8_t					shift_modificator : 3;
-	
 	uint8_t					is_inverted :1;
 	uint8_t					is_disabled :1;
-	button_timer_t	delay_timer :3;
+	// op: logic_op_t for type == LOGIC; 3 bits = up to 8 operators (MVP
+	// uses 7). Unused for non-LOGIC types.
+	uint8_t					op :3;
+
+	button_timer_t	delay_timer :3;	// also serves as the debounce-timer picker when type == LOGIC
 	button_timer_t	press_timer :3;
-	
+
 }	button_t;
 
 typedef struct physical_buttons_state_t
