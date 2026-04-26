@@ -597,12 +597,35 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				break;
 
 			case LOGIC:
-				// Stage 3 stub. Operator evaluation, source-A/B reads, and
-				// debounce land in subsequent commits. For now a LOGIC-typed
-				// slot just stays low so the firmware doesn't react to
-				// uninitialised op / src_b values.
-				p_button_state->current_state = 0;
+			{
+				// Boolean expression over physical button inputs. Source A
+				// is carried in the slot's physical_num (reused field);
+				// Source B is in src_b (binary ops) and ignored for NOT.
+				// Debounce comes in Stage 5; for now the result is applied
+				// immediately each tick.
+				int8_t a_idx = p_dev_config->buttons[num].physical_num;
+				int8_t b_idx = p_dev_config->buttons[num].src_b;
+
+				// Out-of-range / unassigned source -> treat as not pressed.
+				uint8_t a = (a_idx >= 0 && a_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[a_idx] != 0) : 0;
+				uint8_t b = (b_idx >= 0 && b_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[b_idx] != 0) : 0;
+
+				uint8_t result = 0;
+				switch (p_dev_config->buttons[num].op)
+				{
+					case LOGIC_OP_AND:         result =  (a &&  b); break;
+					case LOGIC_OP_OR:          result =  (a ||  b); break;
+					case LOGIC_OP_NOT:         result =  !a;        break;
+					case LOGIC_OP_NOR:         result = !(a ||  b); break;
+					case LOGIC_OP_NAND:        result = !(a &&  b); break;
+					case LOGIC_OP_XOR:         result =   a ^   b;  break;
+					case LOGIC_OP_A_AND_NOT_B: result =  (a && !b); break;
+					default:                   result = 0;          break;
+				}
+
+				p_button_state->current_state = result;
 				break;
+			}
 
 			default:
 				break;
