@@ -18,7 +18,7 @@
 
 static const dev_config_t init_config =
 {
-	.firmware_version = 0x1731,		// do not change
+	.firmware_version = FIRMWARE_VERSION,	// auto-syncs with the compiled version. Upstream FreeJoy hardcoded 0x1731 here ("do not change"), which broke every cycle that bumps FIRMWARE_VERSION across the &0xFFF0 mask boundary -- DevConfigSet writes init_config as-is, so flash got 0x1731 forever and the version-mismatch check at main.c:64 then fired on every boot, wiping user config on every power cycle.
 	/* 
 		Name of device in devices dispatcher
 	*/
