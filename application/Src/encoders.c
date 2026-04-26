@@ -51,54 +51,71 @@ const int8_t enc_array_4 [16] =
 
 encoder_state_t encoders_state[MAX_ENCODERS_NUM];
 
-static void EncoderFastInit(dev_config_t * p_dev_config)
+// Static hardware mapping for fast (hardware-quadrature) encoders. Each entry
+// pairs a timer with the pin slots it samples. Adding another fast encoder is
+// a matter of adding an entry here and bumping MAX_FAST_ENCODER_NUM.
+typedef struct {
+	TIM_TypeDef* timer;
+	uint8_t      pin_a_idx;
+	uint8_t      pin_b_idx;
+} fast_encoder_hw_t;
+
+static const fast_encoder_hw_t fast_encoder_hw[MAX_FAST_ENCODER_NUM] = {
+	{ TIM1, 8, 9 },		// Encoder 1: TIM1 on PA8/PA9
+};
+
+static void EncoderFastInit(uint8_t fast_idx, dev_config_t * p_dev_config)
 {
-	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure;	
-	RCC_ClocksTypeDef RCC_Clocks;
-	
-	RCC_GetClocksFreq(&RCC_Clocks);
-	
-	// Encoder timer
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);		
-	//TIM_TimeBaseStructInit(&TIM_TimeBaseInitStructure);	
-	TIM_TimeBaseInitStructure.TIM_Prescaler = 0;
-	TIM_TimeBaseInitStructure.TIM_Period = 65535;
-	TIM_TimeBaseInitStructure.TIM_ClockDivision = 0;
-	TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up | TIM_CounterMode_Down;
-	TIM_TimeBaseInit(TIM1, &TIM_TimeBaseInitStructure);
-	
-	switch (p_dev_config->encoders[0])
+	TIM_TypeDef* timer = fast_encoder_hw[fast_idx].timer;
+
+	// Enable the timer's bus clock. TIM1 is on APB2; additional fast-encoder
+	// timers (TIM4 on APB1, etc.) get added here when MAX_FAST_ENCODER_NUM grows.
+	if (timer == TIM1) {
+		RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);
+	}
+
+	TIM_TimeBaseInitTypeDef base;
+	base.TIM_Prescaler = 0;
+	base.TIM_Period = 65535;
+	base.TIM_ClockDivision = 0;
+	base.TIM_CounterMode = TIM_CounterMode_Up | TIM_CounterMode_Down;
+	TIM_TimeBaseInit(timer, &base);
+
+	switch (p_dev_config->encoders[fast_idx])
 	{
-		default:	
+		default:
 		case ENCODER_CONF_2x:
-			TIM_EncoderInterfaceConfig(TIM1, TIM_EncoderMode_TI1, TIM_ICPolarity_Falling, TIM_ICPolarity_Falling);
+			TIM_EncoderInterfaceConfig(timer, TIM_EncoderMode_TI1, TIM_ICPolarity_Falling, TIM_ICPolarity_Falling);
 			break;
-		
+
 		case ENCODER_CONF_4x:
-			TIM_EncoderInterfaceConfig(TIM1, TIM_EncoderMode_TI12, TIM_ICPolarity_Falling, TIM_ICPolarity_Falling);
+			TIM_EncoderInterfaceConfig(timer, TIM_EncoderMode_TI12, TIM_ICPolarity_Falling, TIM_ICPolarity_Falling);
 			break;
 	}
-	
-	TIM1->CNT = 0;
-	TIM_Cmd(TIM1, ENABLE);
+
+	timer->CNT = 0;
+	TIM_Cmd(timer, ENABLE);
 }
 
 void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * p_dev_config)
 {	
 	
 	uint8_t encoders_present = 0;
-	
-	// check if fast encoder present
-	if (encoders_state[0].pin_a >=0 && encoders_state[0].pin_b >=0) 
-		{
-			encoders_state[0].cnt = (int16_t)(TIM1->CNT);
-		}
-	
-	
-	// search if there is at least one polling encoder present
-	for (int i=1; i<MAX_ENCODERS_NUM; i++)
+
+	// read counters from any configured fast (hardware-quadrature) encoders
+	for (uint8_t fi = 0; fi < MAX_FAST_ENCODER_NUM; fi++)
 	{
-		if (encoders_state[i].pin_a >=0 && encoders_state[i].pin_b >=0) 
+		if (encoders_state[fi].pin_a >= 0 && encoders_state[fi].pin_b >= 0)
+		{
+			encoders_state[fi].cnt = (int16_t)(fast_encoder_hw[fi].timer->CNT);
+		}
+	}
+
+
+	// search if there is at least one polling encoder present
+	for (int i = MAX_FAST_ENCODER_NUM; i < MAX_ENCODERS_NUM; i++)
+	{
+		if (encoders_state[i].pin_a >=0 && encoders_state[i].pin_b >=0)
 		{
 			encoders_present = 1;
 			break;
@@ -137,7 +154,7 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 		}
 	}
 	
-	for (int i=1; i<MAX_ENCODERS_NUM; i++)
+	for (int i = MAX_FAST_ENCODER_NUM; i < MAX_ENCODERS_NUM; i++)
 	{
 		if (encoders_state[i].pin_a >=0 && encoders_state[i].pin_b >=0)
 		{
@@ -357,10 +374,10 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 
 void EncodersInit(dev_config_t * p_dev_config)
 {
-	uint8_t pos = 1;		// polling encoders start from pos = 1
+	uint8_t pos = MAX_FAST_ENCODER_NUM;		// polling encoders sit after the fast slots
 	int8_t prev_a = -1;
 	int8_t prev_b = -1;
-	
+
 	for (int i=0; i<MAX_ENCODERS_NUM; i++)
 	{
 		encoders_state[i].pin_a = -1;
@@ -368,18 +385,22 @@ void EncodersInit(dev_config_t * p_dev_config)
 		encoders_state[i].state = 0;
 		encoders_state[i].time_last = 0;
 	}
-	
-	// check if fast encoder connected
-	if (p_dev_config->pins[8] == FAST_ENCODER &&
-			p_dev_config->pins[9] == FAST_ENCODER)
+
+	// Bring up each fast encoder whose configured pin pair matches its hardware
+	// slot. Fast encoders occupy encoders_state[0..MAX_FAST_ENCODER_NUM-1].
+	for (uint8_t fi = 0; fi < MAX_FAST_ENCODER_NUM; fi++)
 	{
-		// fast ancoder always at pos=0
-		encoders_state[0].pin_a = 8;
-		encoders_state[0].pin_b = 9;
-//		encoders_state[0].dir = 1;
-//		encoders_state[0].last_dir = 1;
-		
-		EncoderFastInit(p_dev_config);
+		uint8_t pa = fast_encoder_hw[fi].pin_a_idx;
+		uint8_t pb = fast_encoder_hw[fi].pin_b_idx;
+
+		if (p_dev_config->pins[pa] == FAST_ENCODER &&
+		    p_dev_config->pins[pb] == FAST_ENCODER)
+		{
+			encoders_state[fi].pin_a = pa;
+			encoders_state[fi].pin_b = pb;
+
+			EncoderFastInit(fi, p_dev_config);
+		}
 	}
 	
 	// check if slow encoders connected to buttons inputs

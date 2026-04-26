@@ -17,6 +17,7 @@
 #define MAX_BUTTONS_NUM						128					// power of 2, max 128
 #define MAX_POVS_NUM							4						// max 4
 #define MAX_ENCODERS_NUM					16					// max 64
+#define MAX_FAST_ENCODER_NUM			1						// hardware-quadrature encoders. Bumps to 2 when Encoder 2 ships.
 #define MAX_SHIFT_REG_NUM					4						// max 4
 #define MAX_LEDS_NUM							24
 #define NUM_RGB_LEDS    					50					// if increase dont forget calc config size CONFIG_PAGE_COUNT
