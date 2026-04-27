@@ -334,79 +334,49 @@ void IO_Init (dev_config_t * p_dev_config)
 		// buttons
 		if (p_dev_config->pins[i] == BUTTON_GND)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_PULLUP, BOARD_GPIO_SPEED_10MHZ);
 		}
 		else if (p_dev_config->pins[i] == BUTTON_VCC)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_PULLDOWN, BOARD_GPIO_SPEED_10MHZ);
 		}
 		else if (p_dev_config->pins[i] == BUTTON_COLUMN)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_PULLUP, BOARD_GPIO_SPEED_10MHZ);
 		}
 		else if (p_dev_config->pins[i] == BUTTON_ROW)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
-		}		
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_OPENDRAIN, BOARD_GPIO_SPEED_10MHZ);
+		}
 		else if (p_dev_config->pins[i] == AXIS_ANALOG)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_ANALOG, BOARD_GPIO_SPEED_10MHZ);
 		}
-		else if (p_dev_config->pins[i] == SPI_SCK && i == 14)		// PB3
+		else if (p_dev_config->pins[i] == SPI_SCK && (pin_config[i].caps & PIN_CAP_SPI_SCK))
 		{
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;	
-			GPIO_Init (GPIOB,&GPIO_InitStructure);			
+			Board_PinSetMode(i, BOARD_GPIO_AF_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 		}
-		else if (p_dev_config->pins[i] == SPI_MISO && i == 15)			// PB4
-		{		
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-			GPIO_Init (GPIOB,&GPIO_InitStructure);
+		else if (p_dev_config->pins[i] == SPI_MISO && (pin_config[i].caps & PIN_CAP_SPI_MISO))
+		{
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_FLOATING, BOARD_GPIO_SPEED_50MHZ);
 		}
-		else if (p_dev_config->pins[i] == SPI_MOSI && i == 16)			// PB5
-		{		
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;						// PP or OD?
-			GPIO_Init (GPIOB,&GPIO_InitStructure);
+		else if (p_dev_config->pins[i] == SPI_MOSI && (pin_config[i].caps & PIN_CAP_SPI_MOSI))
+		{
+			Board_PinSetMode(i, BOARD_GPIO_AF_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 
 			SPI_Start();
 		}
-		else if (p_dev_config->pins[i] == I2C_SCL && i == 21)			// PB10
+		else if (p_dev_config->pins[i] == I2C_SCL && (pin_config[i].caps & PIN_CAP_I2C_SCL))
 		{
 			I2C_Start();
-			
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
-			GPIO_Init (GPIOB,&GPIO_InitStructure);
+
+			Board_PinSetMode(i, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
 		}
-		else if (p_dev_config->pins[i] == I2C_SDA && i == 22)			// PB11
-		{		
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;						
-			GPIO_Init (GPIOB,&GPIO_InitStructure);
+		else if (p_dev_config->pins[i] == I2C_SDA && (pin_config[i].caps & PIN_CAP_I2C_SDA))
+		{
+			Board_PinSetMode(i, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
 		}
-		else if (p_dev_config->pins[i] == TLE5011_CS || 
+		else if (p_dev_config->pins[i] == TLE5011_CS ||
 						 p_dev_config->pins[i] == TLE5012_CS ||
 						 p_dev_config->pins[i] == MCP3201_CS ||
 						 p_dev_config->pins[i] == MCP3202_CS ||
@@ -416,100 +386,66 @@ void IO_Init (dev_config_t * p_dev_config)
 						 p_dev_config->pins[i] == MLX90393_CS ||
 						 p_dev_config->pins[i] == AS5048A_CS)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_SET);
 		}
-		else if (p_dev_config->pins[i] == TLE5011_GEN  && i == 17)
+		else if (p_dev_config->pins[i] == TLE5011_GEN && (pin_config[i].caps & PIN_CAP_TLE5011_GEN))
 		{
 			Generator_Init();	// 4MHz output at PB6 pin
 		}
 		else if (p_dev_config->pins[i] == SHIFT_REG_CLK)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_RESET);
 		}
 		else if (p_dev_config->pins[i] == SHIFT_REG_LATCH)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_SET);
 		}
 		else if (p_dev_config->pins[i] == SHIFT_REG_DATA)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_FLOATING, BOARD_GPIO_SPEED_50MHZ);
 		}
 		else if (p_dev_config->pins[i] == LED_PWM)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_AF_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 		}
 		else if (p_dev_config->pins[i] == LED_SINGLE)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 		}
 		else if (p_dev_config->pins[i] == LED_ROW)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 			pin_config[i].port->ODR &=  ~pin_config[i].pin;
 		}
 		else if (p_dev_config->pins[i] == LED_COLUMN)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
 			pin_config[i].port->ODR |=  pin_config[i].pin;
 		}
-		else if (p_dev_config->pins[i] == FAST_ENCODER &&
-		         (i == 8 || i == 9 || i == 17 || i == 18))		// Enc 1 = PA8/PA9 (TIM1), Enc 2 = PB6/PB7 (TIM4)
+		else if (p_dev_config->pins[i] == FAST_ENCODER && (pin_config[i].caps & PIN_CAP_FAST_ENCODER))
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_PULLUP, BOARD_GPIO_SPEED_50MHZ);
 		}
 		else if (p_dev_config->pins[i] == NOT_USED)
 		{
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+			Board_PinSetMode(i, BOARD_GPIO_INPUT_PULLDOWN, BOARD_GPIO_SPEED_2MHZ);
 		}
-		else if (p_dev_config->pins[i] == LED_RGB_WS2812B && i == 10) // PA10
+		else if (p_dev_config->pins[i] == LED_RGB_WS2812B && (pin_config[i].caps & PIN_CAP_LED_RGB))
 		{
 			ws2812b_Init(ARGB_WS2812B);
 		}
-		else if (p_dev_config->pins[i] == LED_RGB_PL9823 && i == 10) // PA10
+		else if (p_dev_config->pins[i] == LED_RGB_PL9823 && (pin_config[i].caps & PIN_CAP_LED_RGB))
 		{
 			ws2812b_Init(ARGB_PL9823);
 		}
-		else if (p_dev_config->pins[i] == UART_TX && i == 9)						// PA9
+		else if (p_dev_config->pins[i] == UART_TX && (pin_config[i].caps & PIN_CAP_UART_TX))
 		{
 			UART_Start();
-			
-			GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-			GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-			GPIO_InitStructure.GPIO_Pin = pin_config[i].pin;
-			GPIO_Init(pin_config[i].port, &GPIO_InitStructure);
+
+			Board_PinSetMode(i, BOARD_GPIO_AF_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 		}
 	}
 

@@ -13,6 +13,7 @@
 #include "stm32f10x.h"
 #include "stm32f10x_conf.h"
 #include "common_types.h"
+#include "board_pins.h"
 
 #include "spi.h"
 #include "i2c.h"
@@ -28,12 +29,13 @@ extern volatile int64_t Ticks;
 extern volatile uint32_t TimingDelay;
 
 
-typedef struct 
+typedef struct
 {
 	GPIO_TypeDef * 	port;
 	uint16_t				pin;
 	uint8_t 				number;
-	
+	uint16_t				caps;		/* PIN_CAP_* bitmask -- which AF roles this pin supports */
+
 }	pin_config_t;
 
 extern pin_config_t pin_config[USED_PINS_NUM];
