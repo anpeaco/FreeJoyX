@@ -79,23 +79,9 @@ void Timers_Init(dev_config_t * p_dev_config)
 	
 	// Reset tick counter
 	Ticks = 0;
-	
-	// Encoders, Axis and HID timer
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-		
-	TIM_TimeBaseStructInit(&TIM_TimeBaseInitStructure);	
-	TIM_TimeBaseInitStructure.TIM_Prescaler = RCC_Clocks.PCLK1_Frequency/100000 - 1;
-	TIM_TimeBaseInitStructure.TIM_Period = 100 - 1;			// 2000Hz
-	TIM_TimeBaseInitStructure.TIM_ClockDivision = 0;
-	TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;
-	TIM_TimeBaseInit(TIM2, &TIM_TimeBaseInitStructure);
-	TIM_ARRPreloadConfig(TIM2, ENABLE);
-	
-	TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);	
-	NVIC_SetPriority(TIM2_IRQn, 3);
-	NVIC_EnableIRQ(TIM2_IRQn);
 
-	TIM_Cmd(TIM2, ENABLE);	
+	// Main tick (encoders, axis sampling, HID report cadence)
+	Board_TickInit(2000);
 	
 	// LED PWM timer
 	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;

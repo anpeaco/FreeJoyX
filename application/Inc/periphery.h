@@ -14,6 +14,7 @@
 #include "stm32f10x_conf.h"
 #include "common_types.h"
 #include "board_pins.h"
+#include "board_tick.h"
 
 #include "spi.h"
 #include "i2c.h"

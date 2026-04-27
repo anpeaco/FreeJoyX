@@ -189,16 +189,16 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 
-void TIM2_IRQHandler(void)
+/* Main tick body. Called from board/f103_bluepill/Src/board_tick.c
+ * TIM2_IRQHandler shim once per tick at 2 kHz; chip-specific status check
+ * + acknowledge happen there. Body indentation retains the previous
+ * if-wrapper depth -- cosmetic, not worth touching in a seam refactor. */
+void Board_TickISR(void)
 {
 	uint8_t						report_buf[64];
 	uint8_t						pos = 0;
 	app_config_t			tmp_app_config;
-	
-	if (TIM_GetITStatus(TIM2, TIM_IT_Update))
-	{
-		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-		
+
 		Ticks++;
 		millis = GetMillis();
 		
@@ -395,8 +395,7 @@ void TIM2_IRQHandler(void)
 				}
 			}
 		}
-		
-	}
+
 }
 
 // SPI Rx Complete

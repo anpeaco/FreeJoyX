@@ -112,7 +112,7 @@ USB_HW_Init();
 		if (bootloader > 0)
 		{
 			// Disable HID report generation
-			NVIC_DisableIRQ(TIM2_IRQn);
+			Board_TickStop();
 			Delay_ms(50);	// time to let HID end last transmission
 			// Disable USB
 			PowerOff();
