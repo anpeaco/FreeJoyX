@@ -28,21 +28,10 @@ BUILD_DIR = build/$(TARGET)/boot
 ######################################
 # source
 ######################################
-# Board-agnostic bootloader sources. Vendor / driver sources live in
-# target_$(TARGET).mk under TARGET_BOOT_C_SOURCES.
-BOOT_C_SOURCES =  \
-../utils/crc16.c \
-../bootloader/Src/main.c \
-../bootloader/Src/periphery.c \
-../bootloader/Src/stm32f10x_it.c \
-../bootloader/Src/usb_desc.c \
-../bootloader/Src/usb_endp.c \
-../bootloader/Src/usb_hw.c \
-../bootloader/Src/usb_istr.c \
-../bootloader/Src/usb_prop.c \
-../bootloader/Src/usb_pwr.c \
-
-C_SOURCES = $(BOOT_C_SOURCES) $(TARGET_BOOT_C_SOURCES)
+# All bootloader sources come from target_$(TARGET).mk so each chip
+# target can declare its own minimal SRC list (F411 bootloader will be
+# wholly different code shipping in Phase 6).
+C_SOURCES = $(TARGET_BOOT_C_SOURCES)
 
 # ASM sources come from the target file (different startup per chip family)
 ASM_SOURCES = $(TARGET_ASM_SOURCES)

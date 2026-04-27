@@ -1,9 +1,9 @@
 # target_f103.mk -- STM32F103 BluePill target definitions
 #
-# All F103-specific compiler flags, vendor / driver source lists, and
+# All F103-specific compiler flags, full C/ASM source list, and
 # linker / startup file names live here so that makefile.app and
 # makefile.boot can stay target-agnostic. Phase 2 of the F411 port will
-# add a parallel target_f411.mk with the equivalent F4 / HAL configuration.
+# add a parallel target_f411.mk with the equivalent F4 / LL configuration.
 
 #######################################
 # CPU / FPU
@@ -32,12 +32,45 @@ TARGET_C_INCLUDES = \
 -I../board/f103_bluepill/Inc
 
 #######################################
-# Vendor / driver C sources used by the APPLICATION
+# All C sources for the APPLICATION build.
 #
-# Board BSP sources (board/f103_bluepill/Src/*.c) are co-located with the
-# vendor drivers below since they're equally chip-specific.
+# This list is the full source set -- application logic, BSP, vendor
+# drivers, USB stack -- because makefile.app no longer carries any
+# hardcoded source list. Each target's makefile defines what it builds.
 #######################################
 TARGET_APP_C_SOURCES = \
+../application/Src/analog.c \
+../application/Src/axis_to_buttons.c \
+../application/Src/buttons.c \
+../application/Src/encoders.c \
+../application/Src/config.c \
+../application/Src/bitmap.c \
+../application/Src/led_effects.c \
+../application/Src/simhub.c \
+../application/Src/leds.c \
+../application/Src/main.c \
+../application/Src/periphery.c \
+../application/Src/tle5011.c \
+../application/Src/tle5012.c \
+../application/Src/as5600.c \
+../application/Src/as5048a.c \
+../application/Src/ads1115.c \
+../application/Src/mlx90363.c \
+../application/Src/mlx90393.c \
+../application/Src/mcp320x.c \
+../application/Src/ws2812b.c \
+../application/Src/shift_registers.c \
+../application/Src/spi.c \
+../application/Src/i2c.c \
+../application/Src/uart.c \
+../application/Src/stm32f10x_it.c \
+../application/Src/usb_desc.c \
+../application/Src/usb_endp.c \
+../application/Src/usb_hw.c \
+../application/Src/usb_istr.c \
+../application/Src/usb_prop.c \
+../application/Src/usb_pwr.c \
+../utils/crc16.c \
 ../board/f103_bluepill/Src/board_pins.c \
 ../board/f103_bluepill/Src/board_flash.c \
 ../board/f103_bluepill/Src/board_dfu.c \
@@ -61,9 +94,19 @@ TARGET_APP_C_SOURCES = \
 ../Drivers/STM32_USB-FS-Device_Driver/src/usb_sil.c
 
 #######################################
-# Vendor / driver C sources used by the BOOTLOADER
+# All C sources for the BOOTLOADER build.
 #######################################
 TARGET_BOOT_C_SOURCES = \
+../utils/crc16.c \
+../bootloader/Src/main.c \
+../bootloader/Src/periphery.c \
+../bootloader/Src/stm32f10x_it.c \
+../bootloader/Src/usb_desc.c \
+../bootloader/Src/usb_endp.c \
+../bootloader/Src/usb_hw.c \
+../bootloader/Src/usb_istr.c \
+../bootloader/Src/usb_prop.c \
+../bootloader/Src/usb_pwr.c \
 ../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c \
 ../Drivers/CMSIS/CM3/CoreSupport/core_cm3.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/misc.c \
