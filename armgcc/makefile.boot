@@ -83,9 +83,11 @@ C_DEFS = $(TARGET_C_DEFS)
 # AS includes
 AS_INCLUDES =
 
-# C includes: vendor / driver dirs from target, plus the bootloader's own
-C_INCLUDES = $(TARGET_C_INCLUDES) \
--I../bootloader/Inc \
+# C includes: bootloader's own dir first so its local stm32f10x_conf.h (stripped
+# down to just the drivers the bootloader uses) wins over the board's full
+# version. Vendor / driver / board dirs come after.
+C_INCLUDES = -I../bootloader/Inc \
+$(TARGET_C_INCLUDES) \
 -I../utils
 
 # compile gcc flags
