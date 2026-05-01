@@ -27,6 +27,7 @@ void ButtonsDebounceProcess(dev_config_t * p_dev_config);
 void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_t * pov_buf, dev_config_t * p_dev_config, uint8_t pos);
 void RadioButtons_Init (dev_config_t * p_dev_config);
 void SequentialButtons_Init (dev_config_t * p_dev_config);
+void Gestures_Init (dev_config_t * p_dev_config);
 uint8_t ButtonsReadPhysical(dev_config_t * p_dev_config, uint8_t * p_buf);
 void ButtonsReadLogical (dev_config_t * p_dev_config);
 void ButtonsGet (uint8_t * out_data, uint8_t * log_data, uint8_t * phy_data, uint8_t * shift_data);

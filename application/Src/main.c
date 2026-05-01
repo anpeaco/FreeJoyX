@@ -81,6 +81,7 @@ USB_HW_Init();
 	ShiftRegistersInit(&dev_config);
 	RadioButtons_Init(&dev_config);
 	SequentialButtons_Init(&dev_config);
+	Gestures_Init(&dev_config);
 	
 	// init sensors
 	AxesInit(&dev_config);

@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x1740			// v1.7.4 (FreeJoyX: forces factory-reset across the button_t layout change -- 0x173x mask-collides with prior versions, 0x1740 trips the mask check at main.c:64)
+#define FIRMWARE_VERSION					0x1750			// v1.7.5 (FreeJoyX: gesture button types -- LONG_PRESS / DOUBLE_TAP append to enum, dev_config_t gains long_press_threshold_ms / double_tap_window_ms; 0x1750 trips the &0xFFF0 mask check at main.c:64 to factory-reset across the layout change)
 #define USED_PINS_NUM							30					// constant for BluePill and BlackPill boards
 #define MAX_AXIS_NUM							8						// max 8
 #define MAX_BUTTONS_NUM						128					// power of 2, max 128

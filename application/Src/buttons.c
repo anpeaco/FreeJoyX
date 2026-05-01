@@ -38,6 +38,21 @@ uint8_t												a2b_first = 0;
 uint8_t												a2b_last = 0;
 volatile uint8_t							button_mutex = 0;
 
+// Gesture-coordination tables, indexed by physical input number (0..MAX_BUTTONS_NUM-1).
+// gesture_delay_ms[p] = resolved gesture window for physical p, 0 if no LONG_PRESS
+//   or DOUBLE_TAP slot is bound to it. Built once at boot by Gestures_Init().
+// gesture_claimed[p] = 1 once a LONG_PRESS or DOUBLE_TAP has fired in the current
+//   press cycle of physical p; tells sister BUTTON_NORMAL slots to suppress their
+//   delayed press fire.
+// gesture_low_since[p] = millis timestamp of when physical p went low; used to
+//   delay clearing gesture_claimed until the physical has been low long enough
+//   for any pending NORMAL DELAY-to-PRESS transition to have already resolved.
+static uint16_t								gesture_delay_ms[MAX_BUTTONS_NUM];
+static uint8_t								gesture_claimed[MAX_BUTTONS_NUM];
+static int32_t								gesture_low_since[MAX_BUTTONS_NUM];
+
+static void GestureClaimedSweep (int32_t millis);
+
 /**
   * @brief  Processing debounce for raw buttons input
 	* @param  p_dev_config: Pointer to device configuration
@@ -87,6 +102,10 @@ void ButtonsDebounceProcess (dev_config_t * p_dev_config)
 				physical_buttons_state[i].changed = 0;
 			}
 	}
+	// Decay gesture_claimed[] flags once their physical inputs have been
+	// low long enough; sister BUTTON_NORMAL slots use these flags to
+	// suppress delayed press fires within the gesture window.
+	GestureClaimedSweep(millis);
 }
 
 static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state, int32_t millis, dev_config_t * p_dev_config, uint8_t num)
@@ -139,6 +158,21 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 			p_dev_config->buttons[num].type == POV4_CENTER))
 	{
 		tmp_delay_time = 100;
+	}
+
+	// BUTTON_NORMAL gesture coordination: extend the delay window to the
+	// per-physical resolved gesture window when sister LONG_PRESS / DOUBLE_TAP
+	// slots exist. NORMAL must hold off firing until the gesture decision is
+	// in. gesture_delay_ms[p] is 0 when no gesture sister exists, leaving
+	// existing behaviour untouched for plain NORMAL slots.
+	if (p_dev_config->buttons[num].type == BUTTON_NORMAL)
+	{
+		int8_t p = p_dev_config->buttons[num].physical_num;
+		if (p >= 0 && p < MAX_BUTTONS_NUM)
+		{
+			uint16_t g = gesture_delay_ms[p];
+			if (g > tmp_delay_time) tmp_delay_time = g;
+		}
 	}
 		
 	// set max delay timer for sequential and radio buttons // heroviy kostil`, need if for check all seq buttons for types of timings
@@ -202,9 +236,25 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				}
 				else if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
 				{
-					p_button_state->current_state = p_button_state->on_state;
+					// Gesture coordination: if a sister LONG_PRESS or DOUBLE_TAP
+					// fired during the delay window, suppress this NORMAL fire and
+					// return to IDLE without setting current_state. Only NORMAL
+					// participates -- POV*_CENTER share this case body but live on
+					// their own physical inputs and aren't affected.
+					int8_t p = p_dev_config->buttons[num].physical_num;
+					if (p_dev_config->buttons[num].type == BUTTON_NORMAL &&
+					    p >= 0 && p < MAX_BUTTONS_NUM &&
+					    gesture_claimed[p])
+					{
+						p_button_state->delay_act = BUTTON_ACTION_IDLE;
+						p_button_state->current_state = 0;
+					}
+					else
+					{
+						p_button_state->current_state = p_button_state->on_state;
+					}
 				}
-				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state && 
+				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state &&
 								p_button_state->delay_act != BUTTON_ACTION_BLOCK)		// triggered in IDLE
 				{
 					p_button_state->delay_act = BUTTON_ACTION_DELAY;
@@ -664,6 +714,104 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				break;
 			}
 
+			case LONG_PRESS:
+			{
+				// Hold-style gesture: virtual button mirrors physical only after the
+				// physical has been held continuously for long_press_threshold_ms.
+				// Releasing before threshold aborts without firing. Once fired,
+				// gesture_claimed[physical] is set so the sister BUTTON_NORMAL slot
+				// (if any) suppresses its delayed press.
+				int8_t p = p_dev_config->buttons[num].physical_num;
+				uint16_t threshold_ms = p_dev_config->long_press_threshold_ms;
+
+				if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
+				{
+					// Already fired -- mirror physical until release.
+					p_button_state->current_state = p_button_state->curr_physical_state;
+					if (p_button_state->curr_physical_state == 0)
+					{
+						p_button_state->delay_act = BUTTON_ACTION_IDLE;
+					}
+				}
+				else if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
+				{
+					if (p_button_state->curr_physical_state == 0)
+					{
+						// Released before threshold -- abort.
+						p_button_state->delay_act = BUTTON_ACTION_IDLE;
+						p_button_state->current_state = 0;
+					}
+					else if (millis - p_button_state->time_last >= threshold_ms)
+					{
+						// Held long enough -- fire and claim.
+						p_button_state->delay_act = BUTTON_ACTION_PRESS;
+						p_button_state->current_state = 1;
+						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
+					}
+				}
+				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
+				{
+					// Rising edge in IDLE -- start the threshold timer.
+					p_button_state->delay_act = BUTTON_ACTION_DELAY;
+					p_button_state->time_last = millis;
+					p_button_state->current_state = 0;
+				}
+				else
+				{
+					p_button_state->current_state = 0;
+				}
+				break;
+			}
+
+			case DOUBLE_TAP:
+			{
+				// Hold-while-second-tap-held gesture. Three states tracked in
+				// tap_count: 0 = idle, 1 = first tap observed (window open),
+				// 2 = second tap captured (mirroring physical until release).
+				// Window measured as time from first rising edge to second rising
+				// edge (double_tap_window_ms).
+				int8_t p = p_dev_config->buttons[num].physical_num;
+				uint16_t window_ms = p_dev_config->double_tap_window_ms;
+
+				if (p_button_state->tap_count == 2)
+				{
+					// Captured -- mirror physical until release.
+					p_button_state->current_state = p_button_state->curr_physical_state;
+					if (p_button_state->curr_physical_state == 0)
+					{
+						p_button_state->tap_count = 0;
+					}
+				}
+				else if (p_button_state->tap_count == 1)
+				{
+					if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
+					{
+						// Second rising edge within window -- capture and claim.
+						p_button_state->tap_count = 2;
+						p_button_state->current_state = 1;
+						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
+					}
+					else if ((millis - p_button_state->first_tap_ms) > window_ms)
+					{
+						// Window expired -- reset.
+						p_button_state->tap_count = 0;
+						p_button_state->current_state = 0;
+					}
+				}
+				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
+				{
+					// First rising edge -- arm the window.
+					p_button_state->tap_count = 1;
+					p_button_state->first_tap_ms = millis;
+					p_button_state->current_state = 0;
+				}
+				else
+				{
+					p_button_state->current_state = 0;
+				}
+				break;
+			}
+
 			default:
 				break;
 		}
@@ -740,6 +888,64 @@ void SequentialButtons_Init (dev_config_t * p_dev_config)
 				//buttons_state[i].prev_state = 1;
 				break;
 			}
+		}
+	}
+}
+
+/**
+  * @brief  Build per-physical gesture lookup tables. Called once at boot.
+  *         Configurator save triggers NVIC_SystemReset(), so a single
+  *         boot-time rebuild covers every config-change path.
+  * @param  p_dev_config: Pointer to device configuration
+  * @retval None
+  */
+void Gestures_Init (dev_config_t * p_dev_config)
+{
+	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++)
+	{
+		gesture_delay_ms[p] = 0;
+		gesture_claimed[p] = 0;
+		gesture_low_since[p] = 0;
+	}
+	for (uint8_t s = 0; s < MAX_BUTTONS_NUM; s++)
+	{
+		button_type_t t = p_dev_config->buttons[s].type;
+		int8_t p = p_dev_config->buttons[s].physical_num;
+		if (p < 0 || p >= MAX_BUTTONS_NUM) continue;
+
+		uint16_t cand = 0;
+		if (t == LONG_PRESS)        cand = p_dev_config->long_press_threshold_ms;
+		else if (t == DOUBLE_TAP)   cand = p_dev_config->double_tap_window_ms;
+		else                        continue;
+
+		if (cand > gesture_delay_ms[p]) gesture_delay_ms[p] = cand;
+	}
+}
+
+/**
+  * @brief  Per-tick sweep: clear gesture_claimed[] entries whose physical
+  *         has been low long enough that any pending sister NORMAL slot's
+  *         DELAY-to-PRESS transition has already resolved. Called from
+  *         ButtonsDebounceProcess once per tick.
+  * @param  millis: current millisecond timestamp (from GetMillis())
+  * @retval None
+  */
+static void GestureClaimedSweep (int32_t millis)
+{
+	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++)
+	{
+		if (physical_buttons_state[p].current_state == 0)
+		{
+			if (gesture_low_since[p] == 0) gesture_low_since[p] = millis;
+			if (gesture_claimed[p] && gesture_delay_ms[p] > 0 &&
+			    (millis - gesture_low_since[p]) > gesture_delay_ms[p])
+			{
+				gesture_claimed[p] = 0;
+			}
+		}
+		else
+		{
+			gesture_low_since[p] = 0;
 		}
 	}
 }

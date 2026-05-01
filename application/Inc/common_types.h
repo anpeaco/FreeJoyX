@@ -234,6 +234,16 @@ enum
 	// delay_timer field selects the debounce timer. Two new fields (op and
 	// src_b) hold the operator and Source B. See F103_LOGIC_PLAN.md.
 	LOGIC,
+
+	// Gesture button types. Appended last so adding them doesn't shift any
+	// existing enum value. Coexistence rule (configurator-enforced): a
+	// physical input may host {NORMAL, LONG_PRESS, DOUBLE_TAP} only --
+	// mixing with other types is blocked. NORMAL slots delay their output
+	// by the resolved gesture window when a sister gesture slot exists,
+	// and the gesture wins (suppresses NORMAL) if it fires within the
+	// window. See F103_GESTURE_PLAN.md.
+	LONG_PRESS,
+	DOUBLE_TAP,
 };
 typedef uint8_t button_type_t;
 
@@ -310,14 +320,20 @@ typedef uint8_t button_action_t;
 
 typedef struct logical_buttons_state_t
 {
-  int32_t time_last;	
+  int32_t time_last;
 	uint8_t curr_physical_state		:1;
-	uint8_t prev_physical_state		:1;	
-	uint8_t on_state 							:1;	
-	uint8_t off_state 						:1;	
-	uint8_t current_state					:1;	
-	uint8_t delay_act 						:2;	
-	
+	uint8_t prev_physical_state		:1;
+	uint8_t on_state 							:1;
+	uint8_t off_state 						:1;
+	uint8_t current_state					:1;
+	uint8_t delay_act 						:2;
+
+	// DOUBLE_TAP: 0 = idle, 1 = first tap observed (waiting for second within
+	// window), 2 = second tap captured (mirroring physical until release).
+	// Unused for non-DOUBLE_TAP slots. LONG_PRESS reuses time_last for its
+	// rising-edge timestamp.
+	uint8_t tap_count							:2;
+	int32_t first_tap_ms;	// timestamp of first rising edge in current DOUBLE_TAP window
 } logical_buttons_state_t;
 
 
@@ -474,10 +490,17 @@ typedef struct
 	
 	// config 6-7-8-9-10-11-12
 	button_t 						buttons[MAX_BUTTONS_NUM];
-	uint16_t						button_timer1_ms;						// config packet 6				
+	uint16_t						button_timer1_ms;						// config packet 6
 	uint16_t						button_timer2_ms;						// config packet 7
 	uint16_t						button_timer3_ms;						// config packet 8
 	uint16_t 						a2b_debounce_ms;						// config packet 9
+	// Gesture-detection global timers. Apply to every LONG_PRESS / DOUBLE_TAP
+	// slot on the device (no per-slot override). long_press_threshold_ms is the
+	// hold time before LONG_PRESS fires; double_tap_window_ms is the max time
+	// between first and second tap for DOUBLE_TAP to fire. Defaults seeded in
+	// init_config (main.h).
+	uint16_t						long_press_threshold_ms;
+	uint16_t						double_tap_window_ms;
 	
 	// config 12-13-14
 	axis_to_buttons_t		axes_to_buttons[MAX_AXIS_NUM];
