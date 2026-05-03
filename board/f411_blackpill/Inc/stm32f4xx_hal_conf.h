@@ -4,9 +4,13 @@
   * @brief   Minimal HAL configuration for FreeJoyX-F411.
   *
   * The F411 port runs on STM32 LL as its primary driver layer (F411_PORT_PLAN.md
-  * "Driver layer (F411)" lock, 2026-04-27). HAL is enabled only for the FLASH
-  * module because LL doesn't ship a flash driver -- mixing LL + HAL-Flash is the
-  * Cube-sanctioned pattern in that case.
+  * "Driver layer (F411)" lock, 2026-04-27). HAL is enabled only where Cube
+  * doesn't ship an LL alternative:
+  *
+  *   - HAL_FLASH (Phase 3) -- LL has no flash driver
+  *   - HAL_PCD   (Phase 4) -- USBD middleware in CubeF4 sits on HAL_PCD only;
+  *                            no LL-only USB device path exists. PCD requires
+  *                            HAL_RCC for clock-frequency queries during init.
   *
   * Do NOT enable additional HAL_*_MODULE_ENABLED entries here without first
   * revisiting the locked decision. Every other HAL submodule has an LL
@@ -16,7 +20,10 @@
   * implementation lives in board_flash.c (returns 0, so HAL_FLASH polls
   * indefinitely against the FLASH_SR_BSY bit instead of timing out -- BSY
   * clears within microseconds for valid ops, and the Phase 3 acceptance is a
-  * compile-clean build, not stress testing).
+  * compile-clean build, not stress testing). HAL_PCD also calls HAL_GetTick;
+  * Phase 4 either reuses the same stub (USB enumeration tolerates it because
+  * BSY-equivalent waits are short) or wires HAL_GetTick into the TIM2 tick
+  * once the application is up.
   ******************************************************************************
   */
 
@@ -30,6 +37,10 @@ extern "C" {
 /* ########################## Module Selection ############################## */
 #define HAL_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
+#define HAL_PCD_MODULE_ENABLED
+#define HAL_RCC_MODULE_ENABLED
+#define HAL_GPIO_MODULE_ENABLED
+#define HAL_CORTEX_MODULE_ENABLED
 
 /* ########################## HSE/HSI Values ################################ */
 /* BlackPill V3.x carries a 25 MHz HSE crystal. The PLL config in
@@ -63,6 +74,22 @@ extern "C" {
 
 #ifdef HAL_FLASH_MODULE_ENABLED
 #include "stm32f4xx_hal_flash.h"
+#endif
+
+#ifdef HAL_RCC_MODULE_ENABLED
+#include "stm32f4xx_hal_rcc.h"
+#endif
+
+#ifdef HAL_GPIO_MODULE_ENABLED
+#include "stm32f4xx_hal_gpio.h"
+#endif
+
+#ifdef HAL_CORTEX_MODULE_ENABLED
+#include "stm32f4xx_hal_cortex.h"
+#endif
+
+#ifdef HAL_PCD_MODULE_ENABLED
+#include "stm32f4xx_hal_pcd.h"
 #endif
 
 #ifdef USE_FULL_ASSERT

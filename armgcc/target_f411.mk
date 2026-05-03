@@ -39,6 +39,8 @@ TARGET_C_INCLUDES = \
 -I../Drivers/CMSIS/Core/Include \
 -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include \
 -I../Drivers/STM32F4xx_HAL_Driver/Inc \
+-I../Drivers/STM32_USB_Device_Library/Core/Inc \
+-I../Drivers/STM32_USB_Device_Library/Class/CustomHID/Inc \
 -I../board/common/Inc \
 -I../board/f411_blackpill/Inc
 
@@ -92,8 +94,15 @@ TARGET_APP_C_SOURCES = \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_spi.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_tim.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_utils.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_usb.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c \
-../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd_ex.c \
+../Drivers/STM32_USB_Device_Library/Core/Src/usbd_core.c \
+../Drivers/STM32_USB_Device_Library/Core/Src/usbd_ctlreq.c \
+../Drivers/STM32_USB_Device_Library/Core/Src/usbd_ioreq.c \
+../Drivers/STM32_USB_Device_Library/Class/CustomHID/Src/usbd_customhid.c
 # stm32f4xx_hal_flash_ramfunc.c deliberately NOT compiled in: it provides
 # RAM-resident flash ops for low-power-mode programming, which FreeJoyX
 # doesn't use, and it pulls in __HAL_RCC_PWR_CLK_ENABLE which would force
