@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x1750			// v1.7.5 (FreeJoyX: gesture button types -- LONG_PRESS / DOUBLE_TAP append to enum, dev_config_t gains long_press_threshold_ms / double_tap_window_ms; 0x1750 trips the &0xFFF0 mask check at main.c:64 to factory-reset across the layout change)
+#define FIRMWARE_VERSION					0x1760			// v1.7.6 (FreeJoyX: dev_config_t gains saved_breakdown -- a 14-byte configurator-only metadata snapshot of how button slots were divided across categories at the moment of the last save. Lets the configurator detect breakdown drift across save/load cycles and remap stale physical_num references through freejoy::toRef/toAbs. Firmware allocates the bytes but never reads them. 0x1760 trips the &0xFFF0 mask check at main.c:64 to factory-reset across the layout change.)
 #define USED_PINS_NUM							30					// constant for BluePill and BlackPill boards
 #define MAX_AXIS_NUM							8						// max 8
 #define MAX_BUTTONS_NUM						128					// power of 2, max 128
