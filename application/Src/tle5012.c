@@ -116,19 +116,12 @@ void TLE5012_StartDMA(sensor_t * sensor)
 
 void TLE5012_StopDMA(sensor_t * sensor)
 {
-#ifdef BOARD_F103_BLUEPILL
-	/* See tle5011.c::TLE5011_StopDMA for the rationale on these gates. */
-	DMA_Cmd(DMA1_Channel2, DISABLE);
-#endif
+	SPI_AbortTransfer();
 
 	// CS high
 	pin_config[sensor->source].port->ODR |= pin_config[sensor->source].pin;
 	sensor->rx_complete = 1;
 	sensor->tx_complete = 1;
-
-#ifdef BOARD_F103_BLUEPILL
-	SPI_BiDirectionalLineConfig(SPI1, SPI_Direction_Tx);
-#endif
 
 	Delay_us(5);	// wait SPI clocks to stop
 

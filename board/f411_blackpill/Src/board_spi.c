@@ -81,3 +81,11 @@ void SPI_FullDuplex_TransmitReceive(uint8_t * tx_data, uint8_t * rx_data, uint16
 {
 	(void)tx_data; (void)rx_data; (void)length; (void)spi_mode;
 }
+
+/* Sensor-driver completion hooks. The stub never starts a transfer, so
+ * remaining-byte counters always read zero and abort is a no-op. Any
+ * polling loop in the application's sensor code exits on the first
+ * iteration on F411. Real DMA2-based impl arrives later. */
+uint16_t SPI_RxBytesRemaining(void) { return 0; }
+uint16_t SPI_TxBytesRemaining(void) { return 0; }
+void     SPI_AbortTransfer(void)    { }

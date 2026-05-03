@@ -69,6 +69,12 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/shift_registers.c \
 ../application/Src/leds.c \
 ../application/Src/led_effects.c \
+../application/Src/tle5011.c \
+../application/Src/tle5012.c \
+../application/Src/as5048a.c \
+../application/Src/mcp320x.c \
+../application/Src/mlx90363.c \
+../application/Src/mlx90393.c \
 ../utils/crc16.c \
 ../utils/syscalls.c \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \

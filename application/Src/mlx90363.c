@@ -187,7 +187,7 @@ void MLX90363_StartDMA(sensor_t * sensor)
   */
 void MLX90363_StopDMA(sensor_t * sensor)
 {	
-	DMA_Cmd(DMA1_Channel2, DISABLE);
+	SPI_AbortTransfer();
 	// CS high
 	pin_config[sensor->source].port->ODR |= pin_config[sensor->source].pin;
 	sensor->rx_complete = 1;

@@ -36,7 +36,7 @@ void reset_err_flag(sensor_t * sensor){
 	SPI_HalfDuplex_Transmit(&gtmp_buf[0], 2, AS5048A_SPI_MODE);
 	
 	do{
-		tmp = DMA_GetCurrDataCounter(DMA1_Channel3);
+		tmp = SPI_TxBytesRemaining();
 	}  while(tmp!=0);
 	
 	// CS high
@@ -55,7 +55,7 @@ int AS5048A_GetData(uint16_t * data, sensor_t * sensor, uint8_t channel)
 	uint16_t tmp;
 	// wait till the DMA channel has finished
 	do{
-		tmp = DMA_GetCurrDataCounter(DMA1_Channel2);
+		tmp = SPI_RxBytesRemaining();
 	}  while(tmp!=0);
 	tmp = sensor->data[0];
 	tmp = (tmp << 8) | sensor->data[1];
@@ -96,8 +96,8 @@ void AS5048A_StartDMA(sensor_t * sensor)
 }
 
 void AS5048A_StopDMA(sensor_t * sensor)
-{	
-	DMA_Cmd(DMA1_Channel2, DISABLE);
+{
+	SPI_AbortTransfer();
 	// CS high
 	pin_config[sensor->source].port->ODR |= pin_config[sensor->source].pin;
 	sensor->rx_complete = 1;

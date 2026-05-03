@@ -207,4 +207,32 @@ void SPI_FullDuplex_TransmitReceive(uint8_t * tx_data, uint8_t * rx_data, uint16
 	DMA_Cmd(DMA1_Channel3, ENABLE);
 }
 
+/* Sensor-driver completion hooks (Phase 5c). F103 wraps DMA1_Channel2
+ * (RX) and DMA1_Channel3 (TX). The remaining-byte counters drive the
+ * polling-completion loops in as5048a / mcp320x / mlx9036x; the abort
+ * call powers the StopDMA paths so they don't poke DMA registers
+ * directly. */
+uint16_t SPI_RxBytesRemaining(void)
+{
+	return DMA_GetCurrDataCounter(DMA1_Channel2);
+}
+
+uint16_t SPI_TxBytesRemaining(void)
+{
+	return DMA_GetCurrDataCounter(DMA1_Channel3);
+}
+
+void SPI_AbortTransfer(void)
+{
+	DMA_Cmd(DMA1_Channel2, DISABLE);
+	DMA_Cmd(DMA1_Channel3, DISABLE);
+	/* Reset the half-duplex bidirectional line back to Tx so the next
+	 * half-duplex transmit cycle starts from a known state. Half-duplex
+	 * Receive cycles flip BIDIOE = 0 (line = Rx); Transmit cycles need
+	 * BIDIOE = 1 again. The TLE / sensor drivers used to call this
+	 * inline post-DMA-disable; folded into the seam so callers don't
+	 * touch SPI1 directly. No-op on full-duplex transfers. */
+	SPI_BiDirectionalLineConfig(SPI1, SPI_Direction_Tx);
+}
+
 

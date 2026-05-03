@@ -121,23 +121,12 @@ void TLE5011_StartDMA(sensor_t * sensor)
 
 void TLE5011_StopDMA(sensor_t * sensor)
 {
-#ifdef BOARD_F103_BLUEPILL
-	/* SPI1 RX DMA teardown + half-duplex TX-direction reset are F103
-	 * StdPeriph paths. Phase 5c provides LL equivalents on F411
-	 * (board_spi.h or similar); for now F411 just gates them out --
-	 * tle5011 won't actually run on F411 until Phase 5c lands the SPI
-	 * driver anyway, so the gate documents the dependency. */
-	DMA_Cmd(DMA1_Channel2, DISABLE);
-#endif
+	SPI_AbortTransfer();
 
 	// CS high
 	pin_config[sensor->source].port->ODR |= pin_config[sensor->source].pin;
 	sensor->rx_complete = 1;
 	sensor->tx_complete = 1;
-
-#ifdef BOARD_F103_BLUEPILL
-	SPI_BiDirectionalLineConfig(SPI1, SPI_Direction_Tx);
-#endif
 
 	Delay_us(5);	// wait SPI clocks to stop
 
