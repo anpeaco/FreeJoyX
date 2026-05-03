@@ -35,9 +35,15 @@
 #include "led_effects.h"
 #include "simhub.h"
 
+#ifdef BOARD_F103_BLUEPILL
 #include "usb_hw.h"
 #include "usb_lib.h"
 #include "usb_pwr.h"
+#endif
+/* F411 USB stack lands in Phase 4. Until then main.c on F411 boots
+ * through the application loop (timers, buttons, encoders, sensors)
+ * without USB enumeration -- the device is invisible on the bus but
+ * the image is image-clean and the failure point is a known one. */
 
 
 /* Private variables ---------------------------------------------------------*/
@@ -71,9 +77,11 @@ int main(void)
 	}
 	AppConfigInit(&dev_config);
 	
-USB_HW_Init();
+#ifdef BOARD_F103_BLUEPILL
+	USB_HW_Init();
 	// wait for USB initialization
-	Delay_ms(1000);	
+	Delay_ms(1000);
+#endif
 	
 	IO_Init(&dev_config);
 	 
@@ -88,9 +96,11 @@ USB_HW_Init();
 	// start sequential periphery reading
 	Timers_Init(&dev_config);
 	
-	uint8_t serial_num[24];
+	uint8_t serial_num[24] = {0};
+#ifdef BOARD_F103_BLUEPILL
 	SerialNum((uint8_t*)serial_num, 24);
-	
+#endif
+
 	// ring buffer for cdc
 	uint8_t buf[MAX_RING_BIF_SIZE];
 	ring_buf_t *rb = RB_GetPtr();
@@ -115,10 +125,12 @@ USB_HW_Init();
 			// Disable HID report generation
 			Board_TickStop();
 			Delay_ms(50);	// time to let HID end last transmission
+#ifdef BOARD_F103_BLUEPILL
 			// Disable USB
 			PowerOff();
 			USB_HW_DeInit();
-			Delay_ms(500);	
+#endif
+			Delay_ms(500);
 			Board_EnterDfu();
 		}
   }

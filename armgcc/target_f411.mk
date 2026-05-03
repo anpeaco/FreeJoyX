@@ -52,7 +52,7 @@ TARGET_C_INCLUDES = \
 #   SPI_BiDirectional* StdPeriph calls directly -- they wait for Phase 5c.
 #######################################
 TARGET_APP_C_SOURCES = \
-../board/f411_blackpill/Src/main_f411.c \
+../application/Src/main.c \
 ../board/f411_blackpill/Src/board_init.c \
 ../board/f411_blackpill/Src/board_flash.c \
 ../board/f411_blackpill/Src/board_tick.c \
@@ -61,6 +61,8 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_spi.c \
 ../board/f411_blackpill/Src/board_i2c.c \
 ../board/f411_blackpill/Src/board_uart.c \
+../board/f411_blackpill/Src/board_dfu.c \
+../board/f411_blackpill/Src/board_phase_stubs.c \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \
@@ -85,6 +87,7 @@ TARGET_APP_C_SOURCES = \
 ../utils/syscalls.c \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_pwr.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_spi.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_tim.c \
