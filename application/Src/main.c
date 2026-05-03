@@ -35,15 +35,16 @@
 #include "led_effects.h"
 #include "simhub.h"
 
+#include "board_usb.h"
 #ifdef BOARD_F103_BLUEPILL
+/* F1-only USB headers still needed for the host-driven flasher trigger
+ * path that lives in usb_endp.c (REPORT_ID_FIRMWARE handling reaches
+ * into bootloader globals). F411 routes that through Board_EnterDfu
+ * directly; no F1 USB lib needed. */
 #include "usb_hw.h"
 #include "usb_lib.h"
 #include "usb_pwr.h"
 #endif
-/* F411 USB stack lands in Phase 4. Until then main.c on F411 boots
- * through the application loop (timers, buttons, encoders, sensors)
- * without USB enumeration -- the device is invisible on the bus but
- * the image is image-clean and the failure point is a known one. */
 
 
 /* Private variables ---------------------------------------------------------*/
@@ -77,11 +78,9 @@ int main(void)
 	}
 	AppConfigInit(&dev_config);
 	
-#ifdef BOARD_F103_BLUEPILL
-	USB_HW_Init();
+	Board_USB_Init();
 	// wait for USB initialization
 	Delay_ms(1000);
-#endif
 	
 	IO_Init(&dev_config);
 	 
@@ -97,9 +96,7 @@ int main(void)
 	Timers_Init(&dev_config);
 	
 	uint8_t serial_num[24] = {0};
-#ifdef BOARD_F103_BLUEPILL
-	SerialNum((uint8_t*)serial_num, 24);
-#endif
+	Board_GetSerialNum((uint8_t*)serial_num, 24);
 
 	// ring buffer for cdc
 	uint8_t buf[MAX_RING_BIF_SIZE];
@@ -125,11 +122,8 @@ int main(void)
 			// Disable HID report generation
 			Board_TickStop();
 			Delay_ms(50);	// time to let HID end last transmission
-#ifdef BOARD_F103_BLUEPILL
-			// Disable USB
-			PowerOff();
-			USB_HW_DeInit();
-#endif
+			// Graceful USB disconnect before DFU jump.
+			Board_USB_DeInit();
 			Delay_ms(500);
 			Board_EnterDfu();
 		}

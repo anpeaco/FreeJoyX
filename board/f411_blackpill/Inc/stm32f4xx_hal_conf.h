@@ -56,6 +56,18 @@ extern "C" {
 #if !defined(HSI_VALUE)
 #define HSI_VALUE          16000000U
 #endif
+#if !defined(LSI_VALUE)
+#define LSI_VALUE          32000U
+#endif
+#if !defined(LSE_VALUE)
+#define LSE_VALUE          32768U
+#endif
+#if !defined(LSE_STARTUP_TIMEOUT)
+#define LSE_STARTUP_TIMEOUT 5000U
+#endif
+#if !defined(EXTERNAL_CLOCK_VALUE)
+#define EXTERNAL_CLOCK_VALUE 12288000U
+#endif
 #if !defined(VDD_VALUE)
 #define VDD_VALUE          3300U
 #endif

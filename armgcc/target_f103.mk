@@ -77,6 +77,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f103_bluepill/Src/board_spi.c \
 ../board/f103_bluepill/Src/board_i2c.c \
 ../board/f103_bluepill/Src/board_uart.c \
+../board/f103_bluepill/Src/board_usb.c \
 ../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/stm32f10x_usart.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/misc.c \

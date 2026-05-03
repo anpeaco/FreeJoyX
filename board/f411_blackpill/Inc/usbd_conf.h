@@ -47,6 +47,13 @@ extern "C" {
 #define USBD_CUSTOMHID_OUTREPORT_BUF_SIZE           0x40U  /* 64 -- one HID OUT chunk */
 #define USBD_CUSTOM_HID_REPORT_DESC_SIZE            233U
 
+/* Pass the entire 64-byte HID OUT buffer to OutEvent so the dispatch
+ * code can read the report ID from byte[0] and route to the matching
+ * EP1_OUT_Callback handler -- matches the F103 usb_endp.c flow. The
+ * default (event_idx, state) signature is intended for a different
+ * style of HID device where each OUT report is a single button event. */
+#define USBD_CUSTOMHID_REPORT_BUFFER_EVENT_ENABLED
+
 /* Static memory aliases -- USBD_static_malloc allocates from a pool
  * sized for one USBD_CUSTOM_HID_HandleTypeDef instance. */
 #define USBD_malloc                                 (void *)USBD_static_malloc
