@@ -51,7 +51,7 @@ pin_config_t pin_config[USED_PINS_NUM] =
 	{GPIOB, LL_GPIO_PIN_8,   8,  0},                                                      // 19
 	{GPIOB, LL_GPIO_PIN_9,   9,  0},                                                      // 20
 	{GPIOB, LL_GPIO_PIN_10,  10, PIN_CAP_I2C_SCL},                                        // 21 -- I2C2_SCL (AF4)
-	{GPIOB, LL_GPIO_PIN_11,  11, PIN_CAP_I2C_SDA},                                        // 22 -- I2C2_SDA (AF4) -- not bonded on UFQFPN48; configurator hides
+	{GPIOB, LL_GPIO_PIN_2,   2,  0},                                                      // 22 -- PB2 (Phase 7 option B remap; PB11 not bonded on F411 UFQFPN48 so the slot-22 wire-format index points at PB2 on this board only -- BluePill keeps slot 22 = PB11. The configurator's BoardId guard plus the firmware's per-board board_id rejection prevent cross-board config writes from corrupting either pin)
 	{GPIOB, LL_GPIO_PIN_12,  12, 0},                                                      // 23
 	{GPIOB, LL_GPIO_PIN_13,  13, 0},                                                      // 24
 	{GPIOB, LL_GPIO_PIN_14,  14, 0},                                                      // 25
