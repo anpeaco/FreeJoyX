@@ -126,8 +126,32 @@ TARGET_APP_C_SOURCES = \
 #######################################
 TARGET_BOOT_C_SOURCES = \
 ../bootloader/f411/Src/main.c \
+../bootloader/f411/Src/boot_usb_if.c \
+../bootloader/f411/Src/stm32f4xx_it.c \
+../board/f411_blackpill/Src/usbd_conf.c \
+../board/f411_blackpill/Src/usbd_freejoy_desc.c \
+../board/f411_blackpill/Src/board_init.c \
+../utils/crc16.c \
 ../utils/syscalls.c \
-../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c
+../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pcd_ex.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_pwr.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_usb.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_utils.c \
+../Drivers/STM32_USB_Device_Library/Core/Src/usbd_core.c \
+../Drivers/STM32_USB_Device_Library/Core/Src/usbd_ctlreq.c \
+../Drivers/STM32_USB_Device_Library/Core/Src/usbd_ioreq.c \
+../Drivers/STM32_USB_Device_Library/Class/CustomHID/Src/usbd_customhid.c
 
 #######################################
 # Linker scripts
