@@ -1,7 +1,19 @@
 /**
   ******************************************************************************
-  * @file           : spi.c
-  * @brief          : SPI driver implementation
+  * @file           : board_spi.c
+  * @brief          : F103 BluePill SPI driver (StdPeriph + DMA1).
+  *
+  * Hoisted from application/Src/spi.c during Phase 5c. The cross-board
+  * seam is application/Inc/spi.h; F411's LL-based implementation lives
+  * at board/f411_blackpill/Src/board_spi.c.
+  *
+  * SPI1 on PB3/PB4/PB5 after the JTAG-remap that periphery.c::IO_Init
+  * applies. DMA1 channels: 2 = RX, 3 = TX. Completion IRQs live in
+  * application/Src/stm32f10x_it.c (DMA1_Channel2/3_IRQHandler) and
+  * delegate to per-sensor StopDMA helpers. Body untouched from the
+  * original implementation -- pure relocation behind the BSP seam.
+  *
+  * Original copyright header from spi.c:
 			
 		FreeJoy software for game device controllers
     Copyright (C) 2020  Yury Vostrenkov (yuvostrenkov@gmail.com)

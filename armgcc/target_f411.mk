@@ -58,6 +58,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_tick.c \
 ../board/f411_blackpill/Src/board_encoder.c \
 ../board/f411_blackpill/Src/board_pins.c \
+../board/f411_blackpill/Src/board_spi.c \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \
@@ -73,6 +74,7 @@ TARGET_APP_C_SOURCES = \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_spi.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_tim.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_utils.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c \
