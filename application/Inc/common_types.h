@@ -496,6 +496,14 @@ typedef struct
 {
 	// config 1
 	uint16_t 						firmware_version;
+	/* Board identity (Phase 7). Self-tagged by firmware to one of the
+	 * BOARD_ID_* constants in common_defines.h; persisted in flash so an
+	 * INI carrying a saved board_id can be cross-checked at load and
+	 * mismatched writes can be rejected. reserved_layout pads to a
+	 * 4-byte boundary and gives Phase 8+ a slot for board-specific layout
+	 * variant flags without another wire-format bump. */
+	uint8_t							board_id;
+	uint8_t							reserved_layout;
 	char 								device_name[26];
 	uint16_t						button_debounce_ms;
 	uint8_t							encoder_press_time_ms;
@@ -594,12 +602,17 @@ typedef struct
 typedef struct
 {
 	uint16_t 						firmware_version;
+	/* Phase 7: board self-tag. Configurator reads this on every params
+	 * report to know which per-board pin table to render. reserved_layout
+	 * preserves analog_data_t alignment without an implicit pad byte. */
+	uint8_t							board_id;
+	uint8_t							reserved_layout;
 	analog_data_t				raw_axis_data[MAX_AXIS_NUM];
 	analog_data_t			 	axis_data[MAX_AXIS_NUM];
 	uint8_t							phy_button_data[MAX_BUTTONS_NUM/8];
 	uint8_t							log_button_data[MAX_BUTTONS_NUM/8];
 	uint8_t							shift_button_data;
-	
+
 } params_report_t;
 
 /****************** UART REPORT CONFIGURATION **********************/

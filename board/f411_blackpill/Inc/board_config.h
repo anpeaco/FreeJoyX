@@ -21,6 +21,11 @@
 #ifndef BOARD_CONFIG_H_
 #define BOARD_CONFIG_H_
 
+/* Phase 7: BOARD_ID tag for this board. See sibling F103 board_config.h
+ * for rationale. The constant value (BOARD_ID_F411_BLACKPILL) lives in
+ * application/Inc/common_defines.h, which both repos mirror. */
+#define BOARD_ID						BOARD_ID_F411_BLACKPILL
+
 #define FLASH_PAGE_SIZE					(64 * 1024)							/* sector 4 size */
 #define CONFIG_PAGE_COUNT				1									/* one sector for config */
 #define CONFIG_ADDR						0x08010000UL						/* sector 4 start */

@@ -11,8 +11,17 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x1760			// v1.7.6 (FreeJoyX: dev_config_t gains saved_breakdown -- a 14-byte configurator-only metadata snapshot of how button slots were divided across categories at the moment of the last save. Lets the configurator detect breakdown drift across save/load cycles and remap stale physical_num references through freejoy::toRef/toAbs. Firmware allocates the bytes but never reads them. 0x1760 trips the &0xFFF0 mask check at main.c:64 to factory-reset across the layout change.)
+#define FIRMWARE_VERSION					0x1770			// v1.7.7 (FreeJoyX Phase 7: dev_config_t gains uint8_t board_id + uint8_t reserved_layout immediately after firmware_version; params_report_t gains the same. Lets the configurator dispatch per-board pin tables and reject cross-board writes. 0x1770 crosses the &0xFFF0 mask boundary so the version-mismatch check at main.c:67 fires once on first flash and factory-resets across the layout change.)
 #define USED_PINS_NUM							30					// constant for BluePill and BlackPill boards
+
+/* Board identity tags. Stored in dev_config_t.board_id (persisted in
+ * config flash) and broadcast in params_report_t.board_id (read by the
+ * configurator on every params report). The per-target BOARD_ID resolves
+ * via board/<chip>/Inc/board_config.h so the firmware tags itself
+ * automatically; the configurator only ever reads paramsReport.board_id
+ * and never resolves BOARD_ID itself. */
+#define BOARD_ID_F103_BLUEPILL				1
+#define BOARD_ID_F411_BLACKPILL				2
 #define MAX_AXIS_NUM							8						// max 8
 #define MAX_BUTTONS_NUM						128					// power of 2, max 128
 #define MAX_POVS_NUM							4						// max 4

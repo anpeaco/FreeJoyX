@@ -18,6 +18,13 @@
 #ifndef BOARD_CONFIG_H_
 #define BOARD_CONFIG_H_
 
+/* Phase 7: BOARD_ID tag for this board. Goes into dev_config_t.board_id
+ * and params_report_t.board_id so the configurator can dispatch the
+ * right pin table and reject cross-board writes. The value itself
+ * (BOARD_ID_F103_BLUEPILL) is defined in application/Inc/common_defines.h
+ * which both repos mirror. */
+#define BOARD_ID						BOARD_ID_F103_BLUEPILL
+
 #define MAX_PAGE						64				/* number of 1-KB pages on STM32F103C8 */
 #define FLASH_PAGE_SIZE					1024
 #define FLASH_PAGE_END_ADDR				(0x08000000 + (MAX_PAGE * FLASH_PAGE_SIZE))

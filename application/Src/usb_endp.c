@@ -181,8 +181,12 @@ void EP2_OUT_Callback(void)
 			}
 			else // last packet received
 			{
-				// Check if config version matches
-				if ((tmp_dev_config.firmware_version &0xFFF0) != (FIRMWARE_VERSION & 0xFFF0))
+				// Check if config version matches and board_id matches.
+				// Same 0xFE error byte for both -- the configurator
+				// disambiguates by comparing paramsReport.board_id locally
+				// (Phase 7).
+				if (((tmp_dev_config.firmware_version &0xFFF0) != (FIRMWARE_VERSION & 0xFFF0)) ||
+				    (tmp_dev_config.board_id != BOARD_ID))
 				{
 					// Report error
 					uint8_t tmp_buf[2];
@@ -211,9 +215,10 @@ void EP2_OUT_Callback(void)
 				else
 				{
 					tmp_dev_config.firmware_version = FIRMWARE_VERSION;
+					tmp_dev_config.board_id = BOARD_ID;
 					DevConfigSet(&tmp_dev_config);
 					NVIC_SystemReset();
-				}		
+				}
 			}
 		}
 		break;

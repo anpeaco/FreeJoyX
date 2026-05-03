@@ -248,6 +248,8 @@ void Board_TickISR(void)
 				static uint8_t report = 0;
 				report_buf[0] = REPORT_ID_PARAM;
 				params_report.firmware_version = FIRMWARE_VERSION;
+				params_report.board_id = BOARD_ID;
+				params_report.reserved_layout = 0;
 				memcpy(params_report.axis_data, joy_report.axis_data, sizeof(params_report.axis_data));
 				
 				if (report == 0)
