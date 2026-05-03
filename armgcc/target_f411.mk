@@ -60,6 +60,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_pins.c \
 ../board/f411_blackpill/Src/board_spi.c \
 ../board/f411_blackpill/Src/board_i2c.c \
+../board/f411_blackpill/Src/board_uart.c \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \

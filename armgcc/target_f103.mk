@@ -60,7 +60,6 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/mcp320x.c \
 ../application/Src/ws2812b.c \
 ../application/Src/shift_registers.c \
-../application/Src/uart.c \
 ../application/Src/stm32f10x_it.c \
 ../application/Src/usb_desc.c \
 ../application/Src/usb_endp.c \
@@ -77,6 +76,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f103_bluepill/Src/board_encoder.c \
 ../board/f103_bluepill/Src/board_spi.c \
 ../board/f103_bluepill/Src/board_i2c.c \
+../board/f103_bluepill/Src/board_uart.c \
 ../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/stm32f10x_usart.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/misc.c \

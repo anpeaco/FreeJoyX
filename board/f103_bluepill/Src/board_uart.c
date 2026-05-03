@@ -1,7 +1,18 @@
 /**
   ******************************************************************************
-  * @file           : uart.c
-  * @brief          : UART implementation
+  * @file           : board_uart.c
+  * @brief          : F103 BluePill UART driver (StdPeriph + DMA1).
+  *
+  * Hoisted from application/Src/uart.c during Phase 5c step 5. The
+  * cross-board seam is application/Inc/uart.h. F411 stub at
+  * board/f411_blackpill/Src/board_uart.c.
+  *
+  * USART1 on PA9 (TX) used by simhub.c. DMA1_Channel4 = TX,
+  * _Channel5 = RX. The CRC16 helper (gen_crc16) is chip-agnostic and
+  * ships here too -- only called by the UART telemetry path so the
+  * file boundary follows usage rather than chip coupling.
+  *
+  * Original copyright header from uart.c:
 			
 		FreeJoy software for game device controllers
     Copyright (C) 2020  Yury Vostrenkov (yuvostrenkov@gmail.com)

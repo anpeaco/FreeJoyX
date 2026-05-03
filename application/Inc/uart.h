@@ -12,6 +12,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef BOARD_F103_BLUEPILL
+/* F103-only StdPeriph hardware aliases used by board/f103_bluepill/Src/board_uart.c.
+ * F411 implementation in board/f411_blackpill/Src/board_uart.c uses LL
+ * directly and doesn't need these. Gating prevents the F411 build from
+ * dragging in stm32f10x_usart.h via the macro-name lookups. */
 #define UART                   USART1
 #define UART_GPIO              GPIOA
 #define UART_CLK               RCC_APB2Periph_USART1
@@ -21,8 +26,9 @@
 #define UART_Tx_DMA_Channel    DMA1_Channel4
 #define UART_Tx_DMA_FLAG       DMA1_FLAG_TC4
 #define UART_Rx_DMA_Channel    DMA1_Channel5
-#define UART_Rx_DMA_FLAG       DMA1_FLAG_TC5  
+#define UART_Rx_DMA_FLAG       DMA1_FLAG_TC5
 #define UART_DR_Base           0x40013804
+#endif
 
 #define CRC16									 0x8005
 
