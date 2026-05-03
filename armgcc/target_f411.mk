@@ -63,6 +63,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \
+../application/Src/analog.c \
 ../application/Src/axis_to_buttons.c \
 ../application/Src/bitmap.c \
 ../application/Src/simhub.c \

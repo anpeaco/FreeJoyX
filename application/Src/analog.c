@@ -64,12 +64,18 @@ int32_t	axis_trim_value[MAX_AXIS_NUM];
 uint8_t adc_cnt = 0;
 uint8_t sensors_cnt = 0;
 	
+/* ADC channel index per axis. F1 StdPeriph defined ADC_Channel_0 = 0,
+ * etc., so the literal 0..7 here is bit-identical to what was there
+ * before; just no longer references F1-only macros. F411's
+ * LL_ADC_CHANNEL_0 constants have a different layout and are applied
+ * inside the F411-specific BSP (when it lands), so this header value is
+ * a small portable integer the BSP layer maps to native constants. */
 adc_channel_config_t channel_config[MAX_AXIS_NUM] =
 {
-	{ADC_Channel_0, 0}, {ADC_Channel_1, 1}, 
-	{ADC_Channel_2, 2}, {ADC_Channel_3, 3},
-	{ADC_Channel_4, 4}, {ADC_Channel_5, 5}, 
-	{ADC_Channel_6, 6}, {ADC_Channel_7, 7}, 
+	{0, 0}, {1, 1},
+	{2, 2}, {3, 3},
+	{4, 4}, {5, 5},
+	{6, 6}, {7, 7},
 };
 
 unsigned int iabs (int x)
@@ -399,13 +405,15 @@ analog_data_t ShapeFunc (axis_config_t * p_axis_cfg,  analog_data_t value, uint8
   */
 void AxesInit (dev_config_t * p_dev_config)
 {
+#ifdef BOARD_F103_BLUEPILL
   ADC_InitTypeDef ADC_InitStructure;
 	DMA_InitTypeDef DMA_InitStructure;
 
 	 /* DMA and ADC controller clock enable */
   RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1 | RCC_APB2Periph_GPIOA, ENABLE);
-	
+#endif
+
 	for (int i = 0; i<MAX_AXIS_NUM; i++)
 	{
 		sensors[i].source = -1;
@@ -617,6 +625,7 @@ void AxesInit (dev_config_t * p_dev_config)
 			if (is_present) rank++;
 		}
 		
+#ifdef BOARD_F103_BLUEPILL
 		/* ADC1 configuration ------------------------------------------------------*/
 		ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
 		ADC_InitStructure.ADC_ScanConvMode = ENABLE;
@@ -628,25 +637,25 @@ void AxesInit (dev_config_t * p_dev_config)
 
 		/* Enable ADC1 DMA */
 		ADC_DMACmd(ADC1, ENABLE);
-	
+
 		// Configure ADC channels
 		uint8_t tmp_rank = 1;
 		for (int i=0; i<MAX_AXIS_NUM; i++)
-		{ 
-			if (p_dev_config->pins[i] == AXIS_ANALOG)		
+		{
+			if (p_dev_config->pins[i] == AXIS_ANALOG)
 			{
 				for (uint8_t k=0; k<MAX_AXIS_NUM; k++)
 				{
 					if (p_dev_config->axis_config[k].source_main == i)
 					{
-						/* ADC1 regular channel configuration */ 
+						/* ADC1 regular channel configuration */
 						ADC_RegularChannelConfig(ADC1, channel_config[i].channel, tmp_rank++, ADC_SampleTime_239Cycles5);
 						break;
 					}
 				}
 			}
 		}
-		
+
 		/* DMA1 channel1 configuration ----------------------------------------------*/
 		DMA_DeInit(DMA1_Channel1);
 		DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC1->DR;
@@ -661,11 +670,11 @@ void AxesInit (dev_config_t * p_dev_config)
 		DMA_InitStructure.DMA_Priority = DMA_Priority_High;
 		DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
 		DMA_Init(DMA1_Channel1, &DMA_InitStructure);
-	
+
 			/* Enable ADC1 */
 		ADC_Cmd(ADC1, ENABLE);
-			
-			/* Enable ADC1 reset calibration register */   
+
+			/* Enable ADC1 reset calibration register */
 		ADC_ResetCalibration(ADC1);
 		/* Check the end of ADC1 reset calibration register */
 		while(ADC_GetResetCalibrationStatus(ADC1));
@@ -674,6 +683,7 @@ void AxesInit (dev_config_t * p_dev_config)
 		ADC_StartCalibration(ADC1);
 		/* Check the end of ADC1 calibration */
 		while(ADC_GetCalibrationStatus(ADC1));
+#endif /* BOARD_F103_BLUEPILL */
 	}
 }
 
@@ -683,41 +693,47 @@ void AxesInit (dev_config_t * p_dev_config)
   */
 void ADC_Conversion (void)
 {
-	
+#ifdef BOARD_F103_BLUEPILL
 	if (adc_cnt > 0)
 	{
 		// clear buffer from old values
 		for (uint8_t j=0; j<MAX_AXIS_NUM; j++)
 		{
-			adc_data[j] = 0;								
+			adc_data[j] = 0;
 		}
-		// perform multiple conversions	
-		for (uint8_t i=0; i<ADC_CONV_NUM; i++)	
+		// perform multiple conversions
+		for (uint8_t i=0; i<ADC_CONV_NUM; i++)
 		{
 			DMA1_Channel1->CMAR = (uint32_t) &tmp_adc_data[0];
-			DMA_SetCurrDataCounter(DMA1_Channel1, adc_cnt);	
+			DMA_SetCurrDataCounter(DMA1_Channel1, adc_cnt);
 			DMA_Cmd(DMA1_Channel1, ENABLE);
 			ADC_Cmd(ADC1, ENABLE);
-			/* Start ADC1 Software Conversion */ 
+			/* Start ADC1 Software Conversion */
 			ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 
 			while (!DMA_GetFlagStatus(DMA1_FLAG_TC1));
 			DMA_ClearFlag(DMA1_FLAG_TC1);
-				
+
 			ADC_Cmd(ADC1, DISABLE);
 			DMA_Cmd(DMA1_Channel1, DISABLE);
-						
+
 			for (uint8_t j=0; j<MAX_AXIS_NUM; j++)
 			{
-				adc_data[j] += tmp_adc_data[j];								
+				adc_data[j] += tmp_adc_data[j];
 			}
 		}
 		// get mean value
 		for (uint8_t j=0; j<MAX_AXIS_NUM; j++)
 		{
-			adc_data[j] /= ADC_CONV_NUM;								
+			adc_data[j] /= ADC_CONV_NUM;
 		}
 	}
+#else
+	/* F411: ADC1 + DMA2_Stream0 LL impl pending hardware-day verification.
+	 * Stub leaves adc_data[] unchanged so AnalogGet returns whatever the
+	 * last conversion (or factory init zero) wrote -- analog axes will
+	 * read as static on F411 today. */
+#endif
 }
 
 /**
