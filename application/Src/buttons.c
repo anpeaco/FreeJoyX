@@ -957,15 +957,15 @@ static void GestureClaimedSweep (int32_t millis)
   * @retval Buttons state
   */
 uint8_t DirectButtonGet (uint8_t pin_num,  dev_config_t * p_dev_config)
-{	
+{
 	if (p_dev_config->pins[pin_num] == BUTTON_VCC)
 	{
-		return GPIO_ReadInputDataBit(pin_config[pin_num].port, pin_config[pin_num].pin);
+		return Board_PinRead(pin_num);
 	}
-	else 
+	else
 	{
-		return !GPIO_ReadInputDataBit(pin_config[pin_num].port, pin_config[pin_num].pin);
-	}	
+		return !Board_PinRead(pin_num);
+	}
 }
 
 /**
@@ -983,19 +983,19 @@ void MaxtrixButtonsGet (uint8_t * raw_button_data_buf, dev_config_t * p_dev_conf
 		if ((p_dev_config->pins[i] == BUTTON_ROW) && ((*pos) < MAX_BUTTONS_NUM))
 		{
 			// tie Row pin to ground
-			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_RESET);
-			
+			Board_PinWrite(i, 0);
+
 			// get states at Columns
 			for (int k=0; k<USED_PINS_NUM; k++)
 			{
 				if (p_dev_config->pins[k] == BUTTON_COLUMN && (*pos) < MAX_BUTTONS_NUM)
-				{ 
+				{
 					raw_button_data_buf[*pos] = DirectButtonGet(k, p_dev_config);
 					(*pos)++;
 				}
 			}
 			// return Row pin to Hi-Z state
-			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_SET);
+			Board_PinWrite(i, 1);
 		}
 	}
 }

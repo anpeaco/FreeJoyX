@@ -86,3 +86,24 @@ void Board_PinSetMode(uint8_t pin_idx, board_gpio_mode_t mode, board_gpio_speed_
 
 	GPIO_Init(pin_config[pin_idx].port, &gpio_init);
 }
+
+uint8_t Board_PinRead(uint8_t pin_idx)
+{
+	if (pin_idx >= USED_PINS_NUM) return 0;
+	return GPIO_ReadInputDataBit(pin_config[pin_idx].port, pin_config[pin_idx].pin);
+}
+
+void Board_PinWrite(uint8_t pin_idx, uint8_t high)
+{
+	if (pin_idx >= USED_PINS_NUM) return;
+	GPIO_WriteBit(pin_config[pin_idx].port, pin_config[pin_idx].pin, high ? Bit_SET : Bit_RESET);
+}
+
+void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir)
+{
+	GPIO_InitTypeDef gpio_init = {0};
+	gpio_init.GPIO_Speed = GPIO_Speed_50MHz;
+	gpio_init.GPIO_Pin   = GPIO_Pin_5;
+	gpio_init.GPIO_Mode  = (dir == BOARD_TLE5011_BUS_DIR_RX) ? GPIO_Mode_AF_OD : GPIO_Mode_AF_PP;
+	GPIO_Init(GPIOB, &gpio_init);
+}

@@ -23,6 +23,7 @@
   */
 
 #include "encoders.h"
+#include "board_encoder.h"
 
 
 const int8_t enc_array_1 [16] =
@@ -51,54 +52,22 @@ const int8_t enc_array_4 [16] =
 
 encoder_state_t encoders_state[MAX_ENCODERS_NUM];
 
-// Static hardware mapping for fast (hardware-quadrature) encoders. Each entry
-// pairs a timer with the pin slots it samples. Adding another fast encoder is
-// a matter of adding an entry here and bumping MAX_FAST_ENCODER_NUM.
+// Slot-to-pin mapping for fast (hardware-quadrature) encoders. The pin slot
+// indices are part of the wire format (shared across both boards via
+// USED_PINS_NUM = 30). The actual timer / clock / AF setup is board-specific
+// and lives behind Board_FastEncoderInit / Board_FastEncoderGetCount in
+// board/<chip>/Src/board_encoder.c. Adding another fast encoder means adding
+// an entry here and bumping MAX_FAST_ENCODER_NUM (and adding a slot to each
+// board's hw table).
 typedef struct {
-	TIM_TypeDef* timer;
-	uint8_t      pin_a_idx;
-	uint8_t      pin_b_idx;
-} fast_encoder_hw_t;
+	uint8_t pin_a_idx;
+	uint8_t pin_b_idx;
+} fast_encoder_pins_t;
 
-static const fast_encoder_hw_t fast_encoder_hw[MAX_FAST_ENCODER_NUM] = {
-	{ TIM1,  8,  9 },	// Encoder 1: TIM1 on PA8/PA9 (pins[] slots 8, 9)
-	{ TIM4, 17, 18 },	// Encoder 2: TIM4 on PB6/PB7 (pins[] slots 17, 18)
+static const fast_encoder_pins_t fast_encoder_pins[MAX_FAST_ENCODER_NUM] = {
+	{  8,  9 },	// Encoder 1: PA8/PA9 (TIM1 on F103/F411)
+	{ 17, 18 },	// Encoder 2: PB6/PB7 (TIM4 on F103/F411)
 };
-
-static void EncoderFastInit(uint8_t fast_idx, dev_config_t * p_dev_config)
-{
-	TIM_TypeDef* timer = fast_encoder_hw[fast_idx].timer;
-
-	// Enable the timer's bus clock. Different timers live on different APB
-	// buses (TIM1 on APB2, TIM4 on APB1), so dispatch on the timer pointer.
-	if (timer == TIM1) {
-		RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);
-	} else if (timer == TIM4) {
-		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
-	}
-
-	TIM_TimeBaseInitTypeDef base;
-	base.TIM_Prescaler = 0;
-	base.TIM_Period = 65535;
-	base.TIM_ClockDivision = 0;
-	base.TIM_CounterMode = TIM_CounterMode_Up | TIM_CounterMode_Down;
-	TIM_TimeBaseInit(timer, &base);
-
-	switch (p_dev_config->fast_encoders[fast_idx].mode)
-	{
-		default:
-		case ENCODER_CONF_2x:
-			TIM_EncoderInterfaceConfig(timer, TIM_EncoderMode_TI1, TIM_ICPolarity_Falling, TIM_ICPolarity_Falling);
-			break;
-
-		case ENCODER_CONF_4x:
-			TIM_EncoderInterfaceConfig(timer, TIM_EncoderMode_TI12, TIM_ICPolarity_Falling, TIM_ICPolarity_Falling);
-			break;
-	}
-
-	timer->CNT = 0;
-	TIM_Cmd(timer, ENABLE);
-}
 
 void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * p_dev_config)
 {	
@@ -110,7 +79,7 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 	{
 		if (encoders_state[fi].pin_a >= 0 && encoders_state[fi].pin_b >= 0)
 		{
-			encoders_state[fi].cnt = (int16_t)(fast_encoder_hw[fi].timer->CNT);
+			encoders_state[fi].cnt = Board_FastEncoderGetCount(fi);
 		}
 	}
 
@@ -400,10 +369,14 @@ void EncodersInit(dev_config_t * p_dev_config)
 	{
 		if (p_dev_config->fast_encoders[fi].enabled)
 		{
-			encoders_state[fi].pin_a = fast_encoder_hw[fi].pin_a_idx;
-			encoders_state[fi].pin_b = fast_encoder_hw[fi].pin_b_idx;
+			encoders_state[fi].pin_a = fast_encoder_pins[fi].pin_a_idx;
+			encoders_state[fi].pin_b = fast_encoder_pins[fi].pin_b_idx;
 
-			EncoderFastInit(fi, p_dev_config);
+			board_encoder_mode_t mode =
+				(p_dev_config->fast_encoders[fi].mode == ENCODER_CONF_4x)
+					? BOARD_ENCODER_MODE_4X
+					: BOARD_ENCODER_MODE_2X;
+			Board_FastEncoderInit(fi, mode);
 		}
 	}
 	

@@ -105,44 +105,43 @@ int TLE5011_GetAngle(sensor_t * sensor, float * angle)
 }
 
 void TLE5011_StartDMA(sensor_t * sensor)
-{	
+{
 	sensor->rx_complete = 1;
 	sensor->tx_complete = 0;
-	
-	// switch MOSI to open-drain
-	GPIO_InitTypeDef GPIO_InitStructure;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;						
-	GPIO_Init (GPIOB,&GPIO_InitStructure);
-	
+
+	Board_TLE5011_BusDir(BOARD_TLE5011_BUS_DIR_RX);
+
 	// CS low
 	pin_config[sensor->source].port->ODR &= ~pin_config[sensor->source].pin;
 	sensor->data[0] = 0x00;
 	sensor->data[1] = 0x8C;
-	
+
 	SPI_HalfDuplex_Transmit(&sensor->data[0], 2, TLE5011_SPI_MODE);
 }
 
 void TLE5011_StopDMA(sensor_t * sensor)
-{	
+{
+#ifdef BOARD_F103_BLUEPILL
+	/* SPI1 RX DMA teardown + half-duplex TX-direction reset are F103
+	 * StdPeriph paths. Phase 5c provides LL equivalents on F411
+	 * (board_spi.h or similar); for now F411 just gates them out --
+	 * tle5011 won't actually run on F411 until Phase 5c lands the SPI
+	 * driver anyway, so the gate documents the dependency. */
 	DMA_Cmd(DMA1_Channel2, DISABLE);
-	
-	// CS high	
+#endif
+
+	// CS high
 	pin_config[sensor->source].port->ODR |= pin_config[sensor->source].pin;
 	sensor->rx_complete = 1;
 	sensor->tx_complete = 1;
-	
-	SPI_BiDirectionalLineConfig(SPI1, SPI_Direction_Tx);	
-	
+
+#ifdef BOARD_F103_BLUEPILL
+	SPI_BiDirectionalLineConfig(SPI1, SPI_Direction_Tx);
+#endif
+
 	Delay_us(5);	// wait SPI clocks to stop
-	
-	// switch MOSI back to push-pull
-	GPIO_InitTypeDef GPIO_InitStructure;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;						
-	GPIO_Init (GPIOB,&GPIO_InitStructure);
+
+	Board_TLE5011_BusDir(BOARD_TLE5011_BUS_DIR_TX);
 }
 
 

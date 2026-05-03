@@ -115,26 +115,24 @@ void TLE5012_StartDMA(sensor_t * sensor)
 }
 
 void TLE5012_StopDMA(sensor_t * sensor)
-{	
+{
+#ifdef BOARD_F103_BLUEPILL
+	/* See tle5011.c::TLE5011_StopDMA for the rationale on these gates. */
 	DMA_Cmd(DMA1_Channel2, DISABLE);
-	
-	
-	
-	// CS high	
+#endif
+
+	// CS high
 	pin_config[sensor->source].port->ODR |= pin_config[sensor->source].pin;
 	sensor->rx_complete = 1;
 	sensor->tx_complete = 1;
-	
+
+#ifdef BOARD_F103_BLUEPILL
 	SPI_BiDirectionalLineConfig(SPI1, SPI_Direction_Tx);
-	
+#endif
+
 	Delay_us(5);	// wait SPI clocks to stop
-	
-	// switch MOSI back to push-pull
-	GPIO_InitTypeDef GPIO_InitStructure;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;						
-	GPIO_Init (GPIOB,&GPIO_InitStructure);	
+
+	Board_TLE5011_BusDir(BOARD_TLE5011_BUS_DIR_TX);
 }
 
 

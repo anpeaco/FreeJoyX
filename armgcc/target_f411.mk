@@ -43,7 +43,13 @@ TARGET_C_INCLUDES = \
 -I../board/f411_blackpill/Inc
 
 #######################################
-# All C sources for the APPLICATION build (Phase 2: blinky-only).
+# C sources for the APPLICATION build.
+# Phase 2: minimal blinky (main_f411.c + BSP only).
+# Phase 5b: board-agnostic application files added (compile-clean only;
+#   F411 link still fails until Phase 4 USB and Phase 5c SPI/DMA/ADC/UART
+#   land). Sensor drivers (as5048a, as5600, mcp320x, mlx90363, mlx90393,
+#   ads1115) and TLE5011/TLE5012 reach into DMA1_Channel{2,3,5} and
+#   SPI_BiDirectional* StdPeriph calls directly -- they wait for Phase 5c.
 #######################################
 TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/main_f411.c \
@@ -51,7 +57,18 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_flash.c \
 ../board/f411_blackpill/Src/board_tick.c \
 ../board/f411_blackpill/Src/board_encoder.c \
+../board/f411_blackpill/Src/board_pins.c \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \
+../application/Src/buttons.c \
+../application/Src/encoders.c \
+../application/Src/axis_to_buttons.c \
+../application/Src/bitmap.c \
+../application/Src/simhub.c \
+../application/Src/config.c \
+../application/Src/shift_registers.c \
+../application/Src/leds.c \
+../application/Src/led_effects.c \
+../utils/crc16.c \
 ../utils/syscalls.c \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c \

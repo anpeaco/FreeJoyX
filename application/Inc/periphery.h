@@ -10,8 +10,13 @@
 #ifndef __PERIPHERY_H__
 #define __PERIPHERY_H__
 
+#ifdef BOARD_F103_BLUEPILL
 #include "stm32f10x.h"
 #include "stm32f10x_conf.h"
+#elif defined(BOARD_F411_BLACKPILL)
+#include "stm32f4xx.h"
+#endif
+
 #include "common_types.h"
 #include "board_pins.h"
 #include "board_tick.h"

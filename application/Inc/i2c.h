@@ -9,8 +9,14 @@
 #ifndef __I2C_H__
 #define __I2C_H__
 
+#include <stdint.h>
+#ifdef BOARD_F103_BLUEPILL
 #include "stm32f10x.h"
 #include "stm32f10x_conf.h"
+#endif
+/* Wrapper prototypes only; signatures use uint8_t. The StdPeriph
+ * includes stay gated to F103 because i2c.c needs them for the
+ * implementation. F411's LL-based replacement lands in Phase 5c. */
 
 #define I2C_TIMEOUT		500
 

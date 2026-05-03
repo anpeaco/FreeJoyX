@@ -69,4 +69,28 @@ typedef enum {
  * BOARD_GPIO_SPEED_10MHZ to mirror previous defaults). */
 void Board_PinSetMode(uint8_t pin_idx, board_gpio_mode_t mode, board_gpio_speed_t speed);
 
+/* Read / write a configured GPIO. Both wrap the chip's native idata /
+ * odata register accesses (StdPeriph GPIO_ReadInputDataBit / GPIO_WriteBit
+ * on F103, LL_GPIO_Is* / SetOutputPin / ResetOutputPin on F411) so
+ * application code (buttons.c matrix scan, etc.) stays driver-agnostic.
+ *
+ * Return value of Board_PinRead is 0 or 1; out-of-range pin_idx returns 0.
+ * Board_PinWrite ignores out-of-range pin_idx silently. */
+uint8_t Board_PinRead(uint8_t pin_idx);
+void    Board_PinWrite(uint8_t pin_idx, uint8_t high);
+
+/* Half-duplex bus-direction control for the SPI1 MOSI line (PB5 on both
+ * boards), used by the TLE5011 / TLE5012 sensor drivers to flip between
+ * driving the line (TX, push-pull AF) and listening on it (RX, open-drain
+ * AF). The driver toggles this halfway through each sample cycle.
+ *
+ * Belongs here because it's strictly a GPIO-mode operation; Phase 5c may
+ * fold this into a board_spi.h alongside the LL SPI driver. */
+typedef enum {
+	BOARD_TLE5011_BUS_DIR_TX = 0,	/* MCU drives MOSI: AF push-pull */
+	BOARD_TLE5011_BUS_DIR_RX = 1,	/* sensor drives line: AF open-drain (MCU listens) */
+} board_tle5011_bus_dir_t;
+
+void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir);
+
 #endif /* BOARD_PINS_H_ */
