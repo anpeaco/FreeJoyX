@@ -265,7 +265,9 @@ static uint8_t index_value = 0;
 
 uint8_t SH_Process(dev_config_t * p_dev_config, uint8_t * serial_num, uint8_t sn_length)
 {
-	ring_buf_t *rb = RB_GetPtr();
+	// rb local removed: SH_DataAvailable / SH_Read / SH_Write helpers below
+	// each call RB_GetPtr() themselves, so SH_Process never used the
+	// captured pointer directly. -Wunused-variable.
 	uint8_t need_update = 0;
 	
 	if (SH_DataAvailable() > 0) {

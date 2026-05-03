@@ -71,6 +71,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/usb_prop.c \
 ../application/Src/usb_pwr.c \
 ../utils/crc16.c \
+../utils/syscalls.c \
 ../board/f103_bluepill/Src/board_pins.c \
 ../board/f103_bluepill/Src/board_flash.c \
 ../board/f103_bluepill/Src/board_dfu.c \
@@ -98,6 +99,7 @@ TARGET_APP_C_SOURCES = \
 #######################################
 TARGET_BOOT_C_SOURCES = \
 ../utils/crc16.c \
+../utils/syscalls.c \
 ../bootloader/Src/main.c \
 ../bootloader/Src/periphery.c \
 ../bootloader/Src/stm32f10x_it.c \

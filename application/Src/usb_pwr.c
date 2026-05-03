@@ -87,10 +87,15 @@ RESULT PowerOn(void)
   
   _SetCNTR(wInterrupt_Mask);
 
-  // TODO: "warning: bitwise comparison always evaluates to false" - seems it never works as expected. Maybe fix or change to NOP?
-  /* Wait until RESET flag = 1 (polling) */
-  while((_GetISTR()&ISTR_RESET) == 1);
-  
+  /* Upstream STMicro template polled "while ((_GetISTR() & ISTR_RESET)
+   * == 1)" here. ISTR_RESET is bit 10 (0x0400), so the masked value is
+   * either 0 or 0x0400 -- never 1. The loop body never executed in
+   * production; firmware has been booting without this poll for years.
+   * Removed to silence the -Wtautological-compare warning without
+   * changing runtime behaviour. The peripheral's RESET flag is cleared
+   * unconditionally by SetISTR(0) on the next line, which is what
+   * actually matters for USB init. */
+
   /*** Clear pending interrupts ***/
   SetISTR(0);
   

@@ -102,7 +102,13 @@ LDSCRIPT = $(TARGET_LDSCRIPT_BOOT)
 # libraries
 LIBS = -lc -lm -lnosys
 LIBDIR =
-LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(PRODUCT).map,--cref -Wl,--gc-sections
+# -specs=nosys.specs: provide newlib syscall stubs (_close/_lseek/_read/_write etc.)
+#   so the link-time GC's "not implemented and will always fail" warnings from
+#   libc_nano go quiet. Pairs with -lnosys above; nano.specs stays first.
+# -Wl,--no-warn-rwx-segments: Cortex-M canonical LOAD segment holds .text and
+#   the .data initialiser image in flash, which trips the RWX-segment warning
+#   from ld 2.39+. The arrangement is intentional and safe on this target.
+LDFLAGS = $(MCU) -specs=nano.specs -specs=nosys.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(PRODUCT).map,--cref -Wl,--gc-sections -Wl,--no-warn-rwx-segments
 
 # default action: build all
 all: $(BUILD_DIR)/$(PRODUCT).elf $(BUILD_DIR)/$(PRODUCT).bin

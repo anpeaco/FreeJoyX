@@ -17,7 +17,8 @@ ErrorStatus HSEStartUpStatus;
 /* Extern variables ----------------------------------------------------------*/
 /* Private function prototypes -----------------------------------------------*/
 static void IntToUnicode (uint32_t value , uint8_t *pbuf , uint8_t len);
-static void AsciiToUnicode (uint8_t * pbuf_in , uint8_t *pbuf_out , uint8_t len);
+// AsciiToUnicode declaration removed -- inherited from upstream STMicro USB
+// FS device library template; never defined or called in this project.
 /* Private functions ---------------------------------------------------------*/
 
 /*******************************************************************************

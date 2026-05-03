@@ -41,6 +41,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/main_f411.c \
 ../board/f411_blackpill/Src/board_init.c \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \
+../utils/syscalls.c \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c \
@@ -52,6 +53,7 @@ TARGET_APP_C_SOURCES = \
 #######################################
 TARGET_BOOT_C_SOURCES = \
 ../bootloader/f411/Src/main.c \
+../utils/syscalls.c \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c
 
 #######################################
