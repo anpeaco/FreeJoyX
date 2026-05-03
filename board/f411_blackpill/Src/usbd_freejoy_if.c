@@ -26,14 +26,10 @@
 #include "common_defines.h"
 #include <stdint.h>
 
-/* Forward declarations for the application-layer config-out / firmware /
- * LED handlers. Defined in application/Src/usb_endp.c on F103 today;
- * Phase 4 step 7 pulls usb_endp.c into the F411 build with CDC-related
- * paths gated. Until then these resolve via the link-time stubs in
- * board_phase_stubs.c. The dispatch below is intentionally written
- * against the application-layer surface, not the F103 EP slot names. */
-extern void EP1_OUT_Callback(void);
-extern uint8_t out_buffer[];   /* 64-byte HID OUT scratch in usb_endp.c */
+/* Phase 4D: OutEvent now calls App_HidOutDispatch directly (in
+ * application/Src/usb_app.c) instead of the indirect EP1_OUT_Callback +
+ * out_buffer global the Phase 4 stubs used. */
+extern void App_HidOutDispatch(const uint8_t *hid_buf);
 
 /* HID report descriptor. Layout matches the configurator's parsing
  * (FreeJoyConfiguratorQtX/src/reportconverter.cpp). MAX_BUTTONS_NUM=128
@@ -128,15 +124,12 @@ static int8_t FreeJoy_HID_DeInit(void)
 
 /* Called when host sends a HID OUT report on EP1 OUT. report_buffer is
  * a 64-byte array; report_buffer[0] is the report ID, [1..62] is the
- * payload. The application's existing usb_endp.c::EP1_OUT_Callback
- * reads from a global out_buffer[] populated by the F103 USB stack
- * before the callback fires. Phase 4 mirrors that: copy the buffer to
- * the same global, then invoke the callback. usb_endp.c becomes
- * board-agnostic. */
+ * payload. Dispatch into the board-agnostic App_HidOutDispatch which
+ * handles config receive, firmware-update trigger, and LED-state
+ * updates by report ID. */
 static int8_t FreeJoy_HID_OutEvent(uint8_t *report_buffer)
 {
-	memcpy(out_buffer, report_buffer, USBD_CUSTOMHID_OUTREPORT_BUF_SIZE);
-	EP1_OUT_Callback();
+	App_HidOutDispatch(report_buffer);
 	return USBD_OK;
 }
 

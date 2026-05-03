@@ -94,159 +94,21 @@ void EP1_OUT_Callback(void)
 * Output         : None.
 * Return         : None.
 *******************************************************************************/
+/* Phase 4D: chip-agnostic OUT-dispatch lives in application/Src/usb_app.c.
+ * Forward declare locally to avoid pulling in the full board_usb.h /
+ * usb_app.h surface from this F1-USB-stack file. */
+extern void App_HidOutDispatch(const uint8_t *hid_buf);
+
 void EP2_OUT_Callback(void)
 {
-	static  dev_config_t tmp_dev_config;
-	
-	uint8_t config_in_cnt;
-	uint8_t config_out_cnt;
-	uint8_t tmp_buf[64];
 	uint8_t hid_buf[64];
-	uint8_t repotId;
 
-	/* Read received data (2 bytes) */
-  USB_SIL_Read(EP2_OUT, hid_buf);
-	
-	repotId = hid_buf[0];
-	
-	if (repotId == REPORT_ID_PARAM)
-	{
-		configurator_millis = GetMillis() + 30000;
-		SetEPRxStatus(ENDP2, EP_RX_VALID);
-		return;
-	}
-	else if (repotId == REPORT_ID_CONFIG_IN || repotId == REPORT_ID_CONFIG_OUT || repotId == REPORT_ID_FIRMWARE)
-	{
-		// 2 second delay for joy report during configurator/firmware operations
-		uint64_t delay = GetMillis() + 2000;
-		joy_millis = delay;
-		adc_ticks = buttons_ticks = sensors_ticks = encoder_ticks = delay * TICKS_IN_MILLISECOND;
-	}
-	
-	uint8_t cfg_count = sizeof(dev_config_t) / 62;
-  uint8_t last_cfg_size = sizeof(dev_config_t) % 62;
-	if (last_cfg_size > 0)
-	{
-		cfg_count++;
-	}
-	
-	switch (repotId)
-	{
-		case REPORT_ID_CONFIG_IN:
-		{
-			config_in_cnt = hid_buf[1];			// requested config packet number
-			
-			if ((config_in_cnt > 0) & (config_in_cnt <= cfg_count))
-			{		
-				DevConfigGet(&tmp_dev_config);
-				
-				memset(tmp_buf, 0, sizeof(tmp_buf));
-				tmp_buf[0] = REPORT_ID_CONFIG_IN;					
-				tmp_buf[1] = config_in_cnt;
-				
-				if (config_in_cnt == cfg_count && last_cfg_size > 0)
-				{
-					memcpy(&tmp_buf[2], (uint8_t *) &(tmp_dev_config) + 62*(config_in_cnt-1), last_cfg_size);
-				}
-				else
-				{
-					memcpy(&tmp_buf[2], (uint8_t *) &(tmp_dev_config) + 62*(config_in_cnt-1), 62);
-				}
-				
-				USB_CUSTOM_HID_SendReport(2, (uint8_t *)&(tmp_buf), 64);							
-			}
-		}
-		break;
-		
-		case REPORT_ID_CONFIG_OUT:
-		{
-			if (hid_buf[1] == cfg_count && last_cfg_size > 0)
-			{
-				memcpy((uint8_t *) &(tmp_dev_config) + 62*(hid_buf[1]-1), &hid_buf[2], last_cfg_size);
-			}
-			else if (hid_buf[1] > 0)
-			{
-				memcpy((uint8_t *) &(tmp_dev_config) + 62*(hid_buf[1]-1), &hid_buf[2], 62);
-			}
-			
-			if (hid_buf[1] < cfg_count)		// request new packet
-			{
-				config_out_cnt = hid_buf[1] + 1;
-				
-				uint8_t tmp_buf[2];
-				tmp_buf[0] = REPORT_ID_CONFIG_OUT;
-				tmp_buf[1] = config_out_cnt;
-				
-				USB_CUSTOM_HID_SendReport(2, tmp_buf, 2);
-			}
-			else // last packet received
-			{
-				// Check if config version matches and board_id matches.
-				// Same 0xFE error byte for both -- the configurator
-				// disambiguates by comparing paramsReport.board_id locally
-				// (Phase 7).
-				if (((tmp_dev_config.firmware_version &0xFFF0) != (FIRMWARE_VERSION & 0xFFF0)) ||
-				    (tmp_dev_config.board_id != BOARD_ID))
-				{
-					// Report error
-					uint8_t tmp_buf[2];
-					tmp_buf[0] = REPORT_ID_CONFIG_OUT;
-					tmp_buf[1] = 0xFE;
-					USB_CUSTOM_HID_SendReport(2, tmp_buf, 2);
-					
-					// blink LED if firmware version doesnt match
-					GPIO_InitTypeDef GPIO_InitStructure;
-					GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-					GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-					GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;
-					GPIO_Init(GPIOC, &GPIO_InitStructure);
-					
-					GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-					GPIO_Init(GPIOB, &GPIO_InitStructure);
-					
-					for (uint8_t i=0; i<6; i++) 
-					{
-						
-						GPIOB->ODR ^= GPIO_Pin_12;
-						GPIOC->ODR ^=	GPIO_Pin_13;
-						Delay_us(200000);
-					}
-				}
-				else
-				{
-					tmp_dev_config.firmware_version = FIRMWARE_VERSION;
-					tmp_dev_config.board_id = BOARD_ID;
-					DevConfigSet(&tmp_dev_config);
-					NVIC_SystemReset();
-				}
-			}
-		}
-		break;
-			
-		case REPORT_ID_FIRMWARE:
-		{
-			const char tmp_str[] = "bootloader run";
+	USB_SIL_Read(EP2_OUT, hid_buf);
+	App_HidOutDispatch(hid_buf);
 
-			if (strcmp(tmp_str, (const char *) &hid_buf[1]) == 0)
-			{
-				bootloader = 1;
-			}
-		}
-		break;
-
-		case REPORT_ID_LED:
-		{
-			memcpy(&external_led_data, &hid_buf[1], sizeof(external_led_data_t));
-		}
-		break;
-
-		default:
-			break;
-	}
-
-	memset(hid_buf, 0 ,64);
-  SetEPRxStatus(ENDP2, EP_RX_VALID);
- 
+	/* F1-only EP rearm. F411's USBD_CUSTOM_HID class auto-rearms after
+	 * OutEvent returns. */
+	SetEPRxStatus(ENDP2, EP_RX_VALID);
 }
 
 

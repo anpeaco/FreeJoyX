@@ -64,6 +64,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_i2c.c \
 ../board/f411_blackpill/Src/board_uart.c \
 ../board/f411_blackpill/Src/board_dfu.c \
+../board/f411_blackpill/Src/board_misc.c \
 ../board/f411_blackpill/Src/board_phase_stubs.c \
 ../board/f411_blackpill/Src/usbd_freejoy_desc.c \
 ../board/f411_blackpill/Src/usbd_freejoy_if.c \
@@ -73,6 +74,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \
 ../application/Src/analog.c \
+../application/Src/usb_app.c \
 ../application/Src/periphery.c \
 ../application/Src/axis_to_buttons.c \
 ../application/Src/bitmap.c \

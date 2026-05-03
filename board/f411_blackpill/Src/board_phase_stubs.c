@@ -61,19 +61,8 @@ uint32_t CDC_Send_DATA(uint8_t *data, uint8_t len)
 	return 0;
 }
 
-/* The CustomHID class's OutEvent handler in usbd_freejoy_if.c delegates
- * config-receive into EP1_OUT_Callback + out_buffer -- both defined in
- * application/Src/usb_endp.c on F103. usb_endp.c stays F103-only for
- * Phase 4 (deep F1 USB dependencies); F411 provides link stubs here so
- * the OutEvent path resolves cleanly at link time. The buffer is the
- * 64-byte HID OUT chunk; the callback is application-layer config
- * dispatch. Real config writes will arrive once the chip-agnostic
- * config-receive logic moves out of usb_endp.c into shared code (see
- * F411_PORT_PLAN.md Phase 4d post-hardware item). */
-uint8_t out_buffer[64];
-
-void EP1_OUT_Callback(void)
-{
-	/* No-op stub. Configurator writes to F411 are silently dropped
-	 * until Phase 4d extracts the dispatch logic. */
-}
+/* Phase 4D extracted EP1_OUT_Callback + out_buffer; the OutEvent path
+ * in usbd_freejoy_if.c now calls App_HidOutDispatch in
+ * application/Src/usb_app.c directly. The two link stubs that used to
+ * live here are gone -- usb_app.c is the strong definition on both
+ * targets, no per-board wiring needed. */
