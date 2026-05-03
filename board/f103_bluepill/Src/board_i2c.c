@@ -1,7 +1,16 @@
 /**
   ******************************************************************************
-  * @file           : i2c.c
-  * @brief          : I2C driver implementation
+  * @file           : board_i2c.c
+  * @brief          : F103 BluePill I2C driver (StdPeriph + DMA1).
+  *
+  * Hoisted from application/Src/i2c.c during Phase 5c step 3. The
+  * cross-board seam is application/Inc/i2c.h; F411's LL-based
+  * implementation lives at board/f411_blackpill/Src/board_i2c.c.
+  *
+  * I2C2 on PB10/PB11 (BluePill silkscreen). DMA1 channels: 4 = TX,
+  * 5 = RX. Body untouched -- pure relocation behind the BSP boundary.
+  *
+  * Original copyright header from i2c.c:
 			
 		FreeJoy software for game device controllers
     Copyright (C) 2020  Yury Vostrenkov (yuvostrenkov@gmail.com)
