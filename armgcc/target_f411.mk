@@ -66,6 +66,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_dfu.c \
 ../board/f411_blackpill/Src/board_misc.c \
 ../board/f411_blackpill/Src/board_pwm.c \
+../board/f411_blackpill/Src/board_ws2812b.c \
 ../board/f411_blackpill/Src/board_phase_stubs.c \
 ../board/f411_blackpill/Src/usbd_freejoy_desc.c \
 ../board/f411_blackpill/Src/usbd_freejoy_if.c \
@@ -95,6 +96,7 @@ TARGET_APP_C_SOURCES = \
 ../utils/crc16.c \
 ../utils/syscalls.c \
 ../Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c \
+../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_dma.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_gpio.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_pwr.c \
 ../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_rcc.c \
