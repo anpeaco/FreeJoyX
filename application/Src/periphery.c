@@ -26,6 +26,7 @@
 #include "periphery.h"
 #include "ws2812b.h"
 #include "uart.h"
+#include "board_pwm.h"
 
 /* define compiler specific symbols */
 #if defined ( __CC_ARM   )
@@ -79,68 +80,8 @@ void Timers_Init(dev_config_t * p_dev_config)
 	// Main tick (encoders, axis sampling, HID report cadence)
 	Board_TickInit(2000);
 
-#ifdef BOARD_F103_BLUEPILL
-	/* LED PWM channels on TIM3 (+TIM1 if PA8 routed to LED_PWM) are
-	 * F103-specific. Phase 8 ports them to F411 LL TIM behind a
-	 * board_pwm.h seam; on F411 they're a no-op until then. */
-	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure;
-	TIM_OCInitTypeDef  				TIM_OCInitStructure;
-	RCC_ClocksTypeDef RCC_Clocks;
-
-	RCC_GetClocksFreq(&RCC_Clocks);
-
-	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
-  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
-  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
-	
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);		
-	TIM_TimeBaseStructInit(&TIM_TimeBaseInitStructure);	
-	TIM_TimeBaseInitStructure.TIM_Prescaler = RCC_Clocks.PCLK1_Frequency/100000 - 1;
-	TIM_TimeBaseInitStructure.TIM_Period = 200 - 1;			// 1ms, 1000Hz
-	TIM_TimeBaseInitStructure.TIM_ClockDivision = 0;
-	TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;
-	TIM_TimeBaseInit(TIM3, &TIM_TimeBaseInitStructure);
-	TIM_ARRPreloadConfig(TIM3, ENABLE);
-	TIM_Cmd(TIM3, ENABLE);
-	
-	/* PWM TIM3 config */
-	// Channel 1
-	TIM_OCInitStructure.TIM_Pulse = p_dev_config->led_pwm_config[3].duty_cycle * (TIM_TimeBaseInitStructure.TIM_Period + 1) / 100;
-  TIM_OC1Init(TIM3, &TIM_OCInitStructure);
-  TIM_OC1PreloadConfig(TIM3, TIM_OCPreload_Enable);
-	// Channel 3
-	TIM_OCInitStructure.TIM_Pulse = p_dev_config->led_pwm_config[1].duty_cycle * (TIM_TimeBaseInitStructure.TIM_Period + 1) / 100;
-  TIM_OC3Init(TIM3, &TIM_OCInitStructure);
-  TIM_OC3PreloadConfig(TIM3, TIM_OCPreload_Enable);
-	// Channel 4
-	TIM_OCInitStructure.TIM_Pulse = p_dev_config->led_pwm_config[2].duty_cycle * (TIM_TimeBaseInitStructure.TIM_Period + 1) / 100;
-  TIM_OC4Init(TIM3, &TIM_OCInitStructure);
-  TIM_OC4PreloadConfig(TIM3, TIM_OCPreload_Enable);	
-	
-																					 // prevent conflict with encoder and rgb timer
-	if (p_dev_config->pins[8] == LED_PWM && p_dev_config->pins[10] != LED_RGB_WS2812B && p_dev_config->pins[10] != LED_RGB_PL9823)
-	{
-		/* PWM TIM1 config */
-		RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM1, ENABLE);		
-		TIM_TimeBaseStructInit(&TIM_TimeBaseInitStructure);	
-		TIM_TimeBaseInitStructure.TIM_Prescaler = RCC_Clocks.PCLK2_Frequency/100000 - 1;
-		TIM_TimeBaseInitStructure.TIM_Period = 200 - 1;			// 1ms, 1000Hz
-		TIM_TimeBaseInitStructure.TIM_ClockDivision = 0;
-		TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;
-		TIM_TimeBaseInit(TIM1, &TIM_TimeBaseInitStructure);
-		TIM_ARRPreloadConfig(TIM1, ENABLE);
-		TIM_CtrlPWMOutputs(TIM1, ENABLE);
-		TIM_Cmd(TIM1, ENABLE);
-
-		// Channel 1		
-		TIM_OCInitStructure.TIM_Pulse = p_dev_config->led_pwm_config[0].duty_cycle * (TIM_TimeBaseInitStructure.TIM_Period + 1) / 100;
-		TIM_OC1Init(TIM1, &TIM_OCInitStructure);
-		TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
-		TIM_OC1PolarityConfig(TIM1, TIM_OCPolarity_High);
-	}
-#else
-	(void)p_dev_config;
-#endif /* BOARD_F103_BLUEPILL */
+	// LED PWM channels (TIM3 + optional TIM1) -- per-board impl behind the seam.
+	Board_LedPwm_Init(p_dev_config);
 }
 
 /**
@@ -151,61 +92,7 @@ void Timers_Init(dev_config_t * p_dev_config)
   */
 void PWM_SetFromAxis(dev_config_t * p_dev_config, analog_data_t * axis_data)
 {
-#ifdef BOARD_F103_BLUEPILL
-	int32_t	tmp32;
-
-	/* PWM TIM3 config */
-	// Channel 1
-	if (p_dev_config->led_pwm_config[3].is_axis)
-	{
-		tmp32 = (axis_data[p_dev_config->led_pwm_config[3].axis_num] + 32767)/655;
-		TIM_SetCompare1(TIM3, tmp32 * p_dev_config->led_pwm_config[3].duty_cycle * (TIM3->ARR + 1) / 10000);
-  }
-	else
-	{
-		TIM_SetCompare1(TIM3, p_dev_config->led_pwm_config[3].duty_cycle * (TIM3->ARR + 1) / 100);
-	}
-	
-	// Channel 3
-	if (p_dev_config->led_pwm_config[1].is_axis)
-	{
-		tmp32 = (axis_data[p_dev_config->led_pwm_config[1].axis_num] + 32767)/655;
-		TIM_SetCompare3(TIM3, tmp32 * p_dev_config->led_pwm_config[1].duty_cycle * (TIM3->ARR + 1) / 10000);
-  }
-	else
-	{
-		TIM_SetCompare3(TIM3, p_dev_config->led_pwm_config[1].duty_cycle * (TIM3->ARR + 1) / 100);
-	}
-	
-	// Channel 4
-	if (p_dev_config->led_pwm_config[2].is_axis)
-	{
-		tmp32 = (axis_data[p_dev_config->led_pwm_config[2].axis_num] + 32767)/655;
-		TIM_SetCompare4(TIM3, tmp32 * p_dev_config->led_pwm_config[2].duty_cycle * (TIM3->ARR + 1) / 10000);
-  }
-	else
-	{
-		TIM_SetCompare4(TIM3, p_dev_config->led_pwm_config[2].duty_cycle * (TIM3->ARR + 1) / 100);
-	}	
-	
-
-	/* PWM TIM1 config */
-	// Channel 3														// prevent conflicts with encoder and rgb timer
-	if (p_dev_config->pins[8] == LED_PWM && p_dev_config->pins[10] != LED_RGB_WS2812B && p_dev_config->pins[10] != LED_RGB_PL9823)
-	{
-		if (p_dev_config->led_pwm_config[0].is_axis)
-		{
-			tmp32 = (axis_data[p_dev_config->led_pwm_config[0].axis_num] + 32767)/655;
-			TIM_SetCompare1(TIM1, tmp32 * p_dev_config->led_pwm_config[0].duty_cycle * (TIM1->ARR + 1) / 10000);
-		}
-		else
-		{
-			TIM_SetCompare1(TIM1, p_dev_config->led_pwm_config[0].duty_cycle * (TIM1->ARR + 1) / 100);
-		}
-	}
-#else
-	(void)p_dev_config; (void)axis_data;
-#endif /* BOARD_F103_BLUEPILL */
+	Board_LedPwm_SetFromAxis(p_dev_config, axis_data);
 }
 
 

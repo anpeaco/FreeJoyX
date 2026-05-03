@@ -23,6 +23,7 @@
 	
 #include "leds.h"
 #include "buttons.h"
+#include "board_pins.h"
 	
 uint8_t leds_state[MAX_LEDS_NUM];
 external_led_data_t external_led_data;
@@ -106,7 +107,7 @@ void LED_SetSingle(uint8_t * state_buf, dev_config_t * p_dev_config, uint8_t * p
 	{
 		if (p_dev_config->pins[i] == LED_SINGLE)
 		{
-			leds_state[*pos] ? (pin_config[i].port->ODR |= pin_config[i].pin) : (pin_config[i].port->ODR &= ~pin_config[i].pin); 
+			Board_PinWrite(i, leds_state[*pos] ? 1 : 0);
 			(*pos)++;
 		}
 	}
@@ -123,13 +124,13 @@ void LED_SetMatrix(uint8_t * state_buf, dev_config_t * p_dev_config, uint8_t * p
 		// turn off leds
 		if (p_dev_config->pins[i] == LED_ROW)
 		{
-			pin_config[i].port->ODR &= ~pin_config[i].pin;
+			Board_PinWrite(i, 0);
 			max_row = i;
 			for (uint8_t j=0; j<USED_PINS_NUM; j++)
 			{
 				if (p_dev_config->pins[j] == LED_COLUMN)
 				{
-					pin_config[j].port->ODR |= pin_config[j].pin;
+					Board_PinWrite(j, 1);
 					(*pos)++;
 				}
 			}
@@ -139,19 +140,12 @@ void LED_SetMatrix(uint8_t * state_buf, dev_config_t * p_dev_config, uint8_t * p
 	{
 		if (p_dev_config->pins[i] == LED_ROW && (i > last_row || i == max_row))
 		{
-			pin_config[i].port->ODR |= pin_config[i].pin;
+			Board_PinWrite(i, 1);
 			for (uint8_t j=0; j<USED_PINS_NUM; j++)
 			{
 				if (p_dev_config->pins[j] == LED_COLUMN)
 				{
-					if (leds_state[last_pos++] > 0) 
-					{
-						pin_config[j].port->ODR &= ~pin_config[j].pin;
-					}
-					else
-					{
-						pin_config[j].port->ODR |= pin_config[j].pin; 
-					}				
+					Board_PinWrite(j, (leds_state[last_pos++] > 0) ? 0 : 1);
 				}
 			}
 			if (last_pos >= *pos) last_pos = 0;
