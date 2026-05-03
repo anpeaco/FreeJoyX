@@ -65,6 +65,15 @@ void Board_PinSetMode(uint8_t pin_idx, board_gpio_mode_t mode, board_gpio_speed_
 {
 	if (pin_idx >= USED_PINS_NUM) return;
 
+	/* Idempotent port-clock enable. F103's IO_Init does RCC_APB2PeriphClockCmd
+	 * for GPIOA/B/C at the top once; F411 enables per port here so callers
+	 * (IO_Init or any board file) don't need to remember. Cheap -- LL just
+	 * sets a bit. */
+	GPIO_TypeDef * port = pin_config[pin_idx].port;
+	if      (port == GPIOA) LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+	else if (port == GPIOB) LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+	else if (port == GPIOC) LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+
 	LL_GPIO_InitTypeDef gpio = {0};
 	gpio.Pin = pin_config[pin_idx].pin;
 

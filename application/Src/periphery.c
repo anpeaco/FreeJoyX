@@ -60,9 +60,11 @@ volatile uint32_t TimingDelay;
   * @retval None
   */
 void SysTick_Init(void) {
-    RCC_ClocksTypeDef RCC_Clocks;
-    RCC_GetClocksFreq(&RCC_Clocks);
-    SysTick_Config(RCC_Clocks.SYSCLK_Frequency / 1000);
+    /* CMSIS-portable: SystemCoreClock is updated by SystemInit on F103
+     * (system_stm32f10x.c) and by Board_ClockInit_F411's
+     * LL_SetSystemCoreClock(96000000) on F411. Avoids the F1-only
+     * RCC_GetClocksFreq StdPeriph helper and works on both boards. */
+    SysTick_Config(SystemCoreClock / 1000);
 }
 
 /**
@@ -71,19 +73,22 @@ void SysTick_Init(void) {
   */
 void Timers_Init(dev_config_t * p_dev_config)
 {
-	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure;	
-	TIM_OCInitTypeDef  				TIM_OCInitStructure;
-	RCC_ClocksTypeDef RCC_Clocks;
-	
-	RCC_GetClocksFreq(&RCC_Clocks);	
-	
 	// Reset tick counter
 	Ticks = 0;
 
 	// Main tick (encoders, axis sampling, HID report cadence)
 	Board_TickInit(2000);
-	
-	// LED PWM timer
+
+#ifdef BOARD_F103_BLUEPILL
+	/* LED PWM channels on TIM3 (+TIM1 if PA8 routed to LED_PWM) are
+	 * F103-specific. Phase 8 ports them to F411 LL TIM behind a
+	 * board_pwm.h seam; on F411 they're a no-op until then. */
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure;
+	TIM_OCInitTypeDef  				TIM_OCInitStructure;
+	RCC_ClocksTypeDef RCC_Clocks;
+
+	RCC_GetClocksFreq(&RCC_Clocks);
+
 	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
   TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
   TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
@@ -133,6 +138,9 @@ void Timers_Init(dev_config_t * p_dev_config)
 		TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
 		TIM_OC1PolarityConfig(TIM1, TIM_OCPolarity_High);
 	}
+#else
+	(void)p_dev_config;
+#endif /* BOARD_F103_BLUEPILL */
 }
 
 /**
@@ -143,8 +151,9 @@ void Timers_Init(dev_config_t * p_dev_config)
   */
 void PWM_SetFromAxis(dev_config_t * p_dev_config, analog_data_t * axis_data)
 {
+#ifdef BOARD_F103_BLUEPILL
 	int32_t	tmp32;
-	
+
 	/* PWM TIM3 config */
 	// Channel 1
 	if (p_dev_config->led_pwm_config[3].is_axis)
@@ -194,6 +203,9 @@ void PWM_SetFromAxis(dev_config_t * p_dev_config, analog_data_t * axis_data)
 			TIM_SetCompare1(TIM1, p_dev_config->led_pwm_config[0].duty_cycle * (TIM1->ARR + 1) / 100);
 		}
 	}
+#else
+	(void)p_dev_config; (void)axis_data;
+#endif /* BOARD_F103_BLUEPILL */
 }
 
 
@@ -236,6 +248,12 @@ void Delay_us(uint32_t nTime)
   * @retval None
   */
 void Generator_Init(void) {
+#ifdef BOARD_F103_BLUEPILL
+    /* TIM4_CH1 PWM at PB6 -> 4 MHz square wave for the TLE5011 GEN
+     * input. F411 LL equivalent is a follow-up commit (TIM4 maps to
+     * AF2 on F411; period math identical at 96 MHz timer clock since
+     * APB1 timer-clock matches F103's 72 MHz target ratio
+     * cleanly enough -- needs hardware verification regardless). */
     TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
     TIM_OCInitTypeDef TIM_OCInitStructure;
     GPIO_InitTypeDef GPIO_InitStructureure;
@@ -268,32 +286,40 @@ void Generator_Init(void) {
 
     /* TIM4 enable counter */
     TIM_Cmd(TIM4, ENABLE);
+#endif /* BOARD_F103_BLUEPILL */
 }
 
 /* IO init function */
 void IO_Init (dev_config_t * p_dev_config)
 {
+#ifdef BOARD_F103_BLUEPILL
 	GPIO_InitTypeDef GPIO_InitStructure;
 
-	// Remapping
+	/* F103 needs three things F411 doesn't:
+	 * 1. AFIO global pin remap (TIM3 partial, JTAG release for PB3-5).
+	 *    F411 routes via per-pin AF code via Board_PinSetMode below.
+	 * 2. RCC GPIO port clock enable -- F411 enables on demand inside
+	 *    Board_PinSetMode itself.
+	 * 3. CRL/CRH reset to 0x4444... (input-floating). F411 GPIO regs
+	 *    have a different layout (MODER/OTYPER/OSPEEDR/PUPDR); reset
+	 *    state is already input-floating so no equivalent needed. */
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_NoJTRST, ENABLE);
 	GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 	GPIO_PinRemapConfig(GPIO_PartialRemap_TIM3, ENABLE);
-	
-  // GPIO Ports Clock Enable
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
-	
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC,ENABLE);
+
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
-  GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_10MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;
-  GPIO_Init(GPIOC, &GPIO_InitStructure);
-	
+	GPIO_Init(GPIOC, &GPIO_InitStructure);
+
 	while ((p_dev_config->firmware_version & 0xFFF0) != (FIRMWARE_VERSION & 0xFFF0))
 	{
 		// blink LED if firmware version doesnt match
@@ -301,7 +327,7 @@ void IO_Init (dev_config_t * p_dev_config)
 		GPIOC->ODR ^=	GPIO_Pin_13;
 		Delay_ms(300);
 	}
-	
+
 	// Reset GPIO
 	GPIOA->CRL=0x44444444;
 	GPIOA->CRH=0x44444444;
@@ -312,7 +338,9 @@ void IO_Init (dev_config_t * p_dev_config)
 	GPIOC->CRL=0x44444444;
 	GPIOC->CRH=0x44444444;
 	GPIOC->ODR=0x0;
-	
+#endif
+
+
 
 	// setting up GPIO according confgiguration
 	for (int i=0; i<USED_PINS_NUM; i++)
@@ -373,7 +401,7 @@ void IO_Init (dev_config_t * p_dev_config)
 						 p_dev_config->pins[i] == AS5048A_CS)
 		{
 			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
-			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_SET);
+			Board_PinWrite(i, 1);
 		}
 		else if (p_dev_config->pins[i] == TLE5011_GEN && (pin_config[i].caps & PIN_CAP_TLE5011_GEN))
 		{
@@ -382,12 +410,12 @@ void IO_Init (dev_config_t * p_dev_config)
 		else if (p_dev_config->pins[i] == SHIFT_REG_CLK)
 		{
 			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
-			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_RESET);
+			Board_PinWrite(i, 0);
 		}
 		else if (p_dev_config->pins[i] == SHIFT_REG_LATCH)
 		{
 			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
-			GPIO_WriteBit(pin_config[i].port, pin_config[i].pin, Bit_SET);
+			Board_PinWrite(i, 1);
 		}
 		else if (p_dev_config->pins[i] == SHIFT_REG_DATA)
 		{
@@ -404,12 +432,12 @@ void IO_Init (dev_config_t * p_dev_config)
 		else if (p_dev_config->pins[i] == LED_ROW)
 		{
 			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
-			pin_config[i].port->ODR &=  ~pin_config[i].pin;
+			Board_PinWrite(i, 0);
 		}
 		else if (p_dev_config->pins[i] == LED_COLUMN)
 		{
 			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
-			pin_config[i].port->ODR |=  pin_config[i].pin;
+			Board_PinWrite(i, 1);
 		}
 		else if (p_dev_config->pins[i] == FAST_ENCODER && (pin_config[i].caps & PIN_CAP_FAST_ENCODER))
 		{
@@ -435,7 +463,7 @@ void IO_Init (dev_config_t * p_dev_config)
 		}
 	}
 
-#ifdef DEBUG
+#if defined(DEBUG) && defined(BOARD_F103_BLUEPILL)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
