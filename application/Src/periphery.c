@@ -28,6 +28,15 @@
 #include "uart.h"
 #include "board_pwm.h"
 
+#ifdef BOARD_F411_BLACKPILL
+/* Generator_Init's F411 branch uses LL_TIM + LL_GPIO + LL bus to set up
+ * the 4 MHz GEN clock for TLE5011. Other F411 BSP files include these
+ * headers directly; periphery.c is one of the few application/Src files
+ * that needs to know it's running on F411. */
+#include "stm32f4xx_ll_bus.h"
+#include "stm32f4xx_ll_tim.h"
+#endif
+
 /* define compiler specific symbols */
 #if defined ( __CC_ARM   )
 #define __ASM            __asm                                      /*!< asm keyword for ARM Compiler          */
@@ -137,10 +146,7 @@ void Delay_us(uint32_t nTime)
 void Generator_Init(void) {
 #ifdef BOARD_F103_BLUEPILL
     /* TIM4_CH1 PWM at PB6 -> 4 MHz square wave for the TLE5011 GEN
-     * input. F411 LL equivalent is a follow-up commit (TIM4 maps to
-     * AF2 on F411; period math identical at 96 MHz timer clock since
-     * APB1 timer-clock matches F103's 72 MHz target ratio
-     * cleanly enough -- needs hardware verification regardless). */
+     * input. */
     TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
     TIM_OCInitTypeDef TIM_OCInitStructure;
     GPIO_InitTypeDef GPIO_InitStructureure;
@@ -148,7 +154,7 @@ void Generator_Init(void) {
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
 
-    /* Time base configuration */
+    /* Time base configuration. APB1 timer clock = 72 MHz / 18 = 4 MHz. */
     TIM_TimeBaseStructure.TIM_Period = 18 - 1;
     TIM_TimeBaseStructure.TIM_Prescaler = 0;
     TIM_TimeBaseStructure.TIM_ClockDivision = 0;
@@ -173,7 +179,39 @@ void Generator_Init(void) {
 
     /* TIM4 enable counter */
     TIM_Cmd(TIM4, ENABLE);
-#endif /* BOARD_F103_BLUEPILL */
+#elif defined(BOARD_F411_BLACKPILL)
+    /* TIM4_CH1 PB6 (slot 17) AF2 -> 4 MHz square wave for the TLE5011
+     * GEN clock input. APB1 timer clock = 96 MHz; period 24 with no
+     * prescaler -> 4 MHz, pulse 12 -> 50% duty. Same role as F103;
+     * Encoder 2 mutex (also on TIM4_CH1) is enforced configurator-side. */
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM4);
+    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+
+    LL_TIM_InitTypeDef tim = {0};
+    tim.Prescaler         = 0;
+    tim.CounterMode       = LL_TIM_COUNTERMODE_UP;
+    tim.Autoreload        = 24 - 1;
+    tim.ClockDivision     = LL_TIM_CLOCKDIVISION_DIV1;
+    tim.RepetitionCounter = 0;
+    LL_TIM_Init(TIM4, &tim);
+    LL_TIM_EnableARRPreload(TIM4);
+
+    LL_TIM_OC_InitTypeDef oc = {0};
+    oc.OCMode       = LL_TIM_OCMODE_PWM1;
+    oc.OCState      = LL_TIM_OCSTATE_ENABLE;
+    oc.OCPolarity   = LL_TIM_OCPOLARITY_HIGH;
+    oc.OCIdleState  = LL_TIM_OCIDLESTATE_LOW;
+    oc.CompareValue = 12;
+    LL_TIM_OC_Init(TIM4, LL_TIM_CHANNEL_CH1, &oc);
+    LL_TIM_OC_EnablePreload(TIM4, LL_TIM_CHANNEL_CH1);
+
+    /* PB6 (slot 17) AF2 + push-pull. Use the BSP seams so this stays
+     * consistent with the rest of IO_Init's mode/AF wiring. */
+    Board_PinSetMode(17, BOARD_GPIO_AF_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
+    Board_PinSetAfRole(17, BOARD_AF_ROLE_TLE5011_GEN);
+
+    LL_TIM_EnableCounter(TIM4);
+#endif /* BOARD_xxx */
 }
 
 /* IO init function */
