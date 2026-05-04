@@ -69,6 +69,38 @@ typedef enum {
  * BOARD_GPIO_SPEED_10MHZ to mirror previous defaults). */
 void Board_PinSetMode(uint8_t pin_idx, board_gpio_mode_t mode, board_gpio_speed_t speed);
 
+/* AF role identifiers used by Board_PinSetAfRole. F103's StdPeriph driver
+ * either reads the AF route from the pin map or applies a global remap
+ * (e.g. SPI1 on PB3..5 via GPIO_Remap_SPI1) so its impl is a no-op; F411
+ * must write the per-pin 4-bit nibble in GPIOx->AFR[0]/[1] from the right
+ * AF1..AF15 code, which depends on which peripheral the pin is currently
+ * carrying (e.g. PA9 = AF1 for TIM1_CH2, AF7 for USART1_TX).
+ *
+ * Order is purely UI-stable; new roles append at the end. */
+typedef enum {
+	BOARD_AF_ROLE_SPI_SCK = 0,
+	BOARD_AF_ROLE_SPI_MISO,
+	BOARD_AF_ROLE_SPI_MOSI,
+	BOARD_AF_ROLE_I2C_SCL,
+	BOARD_AF_ROLE_I2C_SDA,
+	BOARD_AF_ROLE_FAST_ENCODER,
+	BOARD_AF_ROLE_TLE5011_GEN,
+	BOARD_AF_ROLE_UART_TX,
+	BOARD_AF_ROLE_LED_RGB,
+	BOARD_AF_ROLE_LED_PWM,
+} board_af_role_t;
+
+/* Routes the pin at slot index `pin_idx` to its AF route for the given role.
+ * Caller must have set the pin's MODE to ALTERNATE first via
+ * Board_PinSetMode(BOARD_GPIO_AF_PUSHPULL or BOARD_GPIO_AF_OPENDRAIN); this
+ * helper only writes the AF code nibble.
+ *
+ * On boards where the AF code is implicit in the pin selection (F103 with
+ * StdPeriph + global remaps), this is a no-op. On boards where the AF
+ * nibble is per-pin (F411 with LL), the impl looks up the right AF1..AF15
+ * code from a per-board (pin_idx, role) table. */
+void Board_PinSetAfRole(uint8_t pin_idx, board_af_role_t role);
+
 /* Read / write a configured GPIO. Both wrap the chip's native idata /
  * odata register accesses (StdPeriph GPIO_ReadInputDataBit / GPIO_WriteBit
  * on F103, LL_GPIO_Is* / SetOutputPin / ResetOutputPin on F411) so
@@ -89,6 +121,13 @@ void    Board_PinWrite(uint8_t pin_idx, uint8_t high);
 typedef enum {
 	BOARD_TLE5011_BUS_DIR_TX = 0,	/* MCU drives MOSI: AF push-pull */
 	BOARD_TLE5011_BUS_DIR_RX = 1,	/* sensor drives line: AF open-drain (MCU listens) */
+	/* TLE5012 listen mode: switch MOSI to plain floating input (no AF,
+	 * no pull). The TLE5012 sensor briefly tristates the line during
+	 * its turnaround between MCU-write and sensor-read; AF open-drain
+	 * doesn't release fast enough for that handshake. F103 originally
+	 * inlined a GPIO_Init in DMA1_Channel3_IRQHandler for this; lifted
+	 * here so the SPI TX-complete dispatcher works cross-board. */
+	BOARD_TLE5011_BUS_DIR_LISTEN_FLOATING = 2,
 } board_tle5011_bus_dir_t;
 
 void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir);

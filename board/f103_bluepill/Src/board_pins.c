@@ -104,6 +104,29 @@ void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir)
 	GPIO_InitTypeDef gpio_init = {0};
 	gpio_init.GPIO_Speed = GPIO_Speed_50MHz;
 	gpio_init.GPIO_Pin   = GPIO_Pin_5;
-	gpio_init.GPIO_Mode  = (dir == BOARD_TLE5011_BUS_DIR_RX) ? GPIO_Mode_AF_OD : GPIO_Mode_AF_PP;
+	switch (dir) {
+		case BOARD_TLE5011_BUS_DIR_TX:
+			gpio_init.GPIO_Mode = GPIO_Mode_AF_PP;
+			break;
+		case BOARD_TLE5011_BUS_DIR_RX:
+			gpio_init.GPIO_Mode = GPIO_Mode_AF_OD;
+			break;
+		case BOARD_TLE5011_BUS_DIR_LISTEN_FLOATING:
+			gpio_init.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+			break;
+	}
 	GPIO_Init(GPIOB, &gpio_init);
+}
+
+void Board_PinSetAfRole(uint8_t pin_idx, board_af_role_t role)
+{
+	/* No-op on F103: StdPeriph routes alternate functions per-peripheral
+	 * (e.g. SPI1's PB3..5 routing comes from the GPIO_Remap_SPI1 call in
+	 * SPI_Start, USART1_TX from the periphery default mapping). The pin's
+	 * MODE is already ALTERNATE (the caller of this helper sets that via
+	 * Board_PinSetMode); StdPeriph wires the rest. F411 needs the
+	 * per-pin AF nibble set explicitly -- this helper is the cross-board
+	 * seam that lets IO_Init / driver bringups stay branch-free. */
+	(void)pin_idx;
+	(void)role;
 }

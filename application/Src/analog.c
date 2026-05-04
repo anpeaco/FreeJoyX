@@ -684,6 +684,89 @@ void AxesInit (dev_config_t * p_dev_config)
 		/* Check the end of ADC1 calibration */
 		while(ADC_GetCalibrationStatus(ADC1));
 #endif /* BOARD_F103_BLUEPILL */
+
+#ifdef BOARD_F411_BLACKPILL
+		/* F411 ADC1 + DMA2 Stream 4 Channel 0 (RM0383 Table 28). Stream 0
+		 * is the alternate ADC1 mapping but it conflicts with SPI1_RX
+		 * which uses Stream 0 Channel 3 -- a DMA stream can only run one
+		 * transfer at a time regardless of which CHSEL is selected, so we
+		 * use Stream 4 here. Direct register access -- LL_ADC isn't
+		 * vendored on this branch. */
+		__IO uint32_t *RCC_AHB1ENR_p = &RCC->AHB1ENR;
+		__IO uint32_t *RCC_APB2ENR_p = &RCC->APB2ENR;
+		*RCC_AHB1ENR_p |= RCC_AHB1ENR_DMA2EN | RCC_AHB1ENR_GPIOAEN;
+		*RCC_APB2ENR_p |= RCC_APB2ENR_ADC1EN;
+
+		/* PA0..PA7 (slots 0..7) carry ADC1 IN0..IN7. Set MODER = ANALOG
+		 * for any slot the user tagged AXIS_ANALOG. Other ADC IN
+		 * channels (IN8 = PB0 / IN9 = PB1) aren't currently in
+		 * channel_config[] so this loop only touches GPIOA. */
+		for (uint8_t i = 0; i < MAX_AXIS_NUM; ++i) {
+			if (p_dev_config->pins[i] == AXIS_ANALOG && i < 8) {
+				GPIOA->MODER |= (3U << (i * 2));
+				GPIOA->PUPDR &= ~(3U << (i * 2));
+			}
+		}
+
+		/* ADC clock prescaler: PCLK2 = 96 MHz, max ADC clock per F411
+		 * datasheet = 36 MHz. /4 -> 24 MHz, comfortable margin. CCR
+		 * lives in the common ADC register block. */
+		ADC->CCR = (ADC->CCR & ~ADC_CCR_ADCPRE) | (1U << 16);
+
+		ADC1->CR2 = 0;
+		ADC1->CR1 = ADC_CR1_SCAN;	/* scan mode, 12-bit (default RES=00) */
+
+		/* Build the regular sequence. Sequence length L = adc_cnt - 1
+		 * lives in SQR1 bits 23:20; ranks 1..6 in SQR3, 7..12 in SQR2.
+		 * Sample time 480 cycles (SMPx = 0b111) for slow, accurate reads
+		 * of high-impedance pots. Channels 0..9 in SMPR2. */
+		uint32_t sqr1 = ((uint32_t)(adc_cnt - 1) & 0x0F) << 20;
+		uint32_t sqr2 = 0;
+		uint32_t sqr3 = 0;
+		uint32_t smpr2 = 0;
+		uint8_t  f411_rank = 1;	/* outer F103 path also has a `rank` */
+		for (uint8_t i = 0; i < MAX_AXIS_NUM; ++i) {
+			if (p_dev_config->pins[i] == AXIS_ANALOG) {
+				for (uint8_t k = 0; k < MAX_AXIS_NUM; ++k) {
+					if (p_dev_config->axis_config[k].source_main == i) {
+						uint8_t ch = channel_config[i].channel;
+						if      (f411_rank <= 6)  sqr3 |= ((uint32_t)ch & 0x1F) << ((f411_rank - 1) * 5);
+						else if (f411_rank <= 12) sqr2 |= ((uint32_t)ch & 0x1F) << ((f411_rank - 7) * 5);
+						if (ch < 10) smpr2 |= (7U << (ch * 3));
+						f411_rank++;
+						break;
+					}
+				}
+			}
+		}
+		ADC1->SQR1  = sqr1;
+		ADC1->SQR2  = sqr2;
+		ADC1->SQR3  = sqr3;
+		ADC1->SMPR1 = 0;
+		ADC1->SMPR2 = smpr2;
+
+		/* DMA mode + DDS so the ADC keeps requesting after the last
+		 * regular conversion. ADC_Conversion re-arms the stream each
+		 * pass; DDS prevents OVR latching across passes. */
+		ADC1->CR2 |= ADC_CR2_DMA | ADC_CR2_DDS;
+
+		/* DMA2 Stream 4 Channel 0 base config; M0AR + NDTR set per
+		 * conversion in ADC_Conversion. */
+		DMA2_Stream4->CR = 0;
+		while (DMA2_Stream4->CR & DMA_SxCR_EN);
+		DMA2_Stream4->PAR = (uint32_t)&ADC1->DR;
+		DMA2_Stream4->CR =
+			(0U << 25) |	/* CHSEL = 0 (ADC1) */
+			(2U << 13) |	/* MSIZE = halfword */
+			(2U << 11) |	/* PSIZE = halfword */
+			(1U << 10) |	/* MINC = 1 */
+			(0U <<  6) |	/* DIR  = peripheral->memory */
+			(2U << 16);	/* PL = high priority */
+
+		/* Power up ADC1. F4 doesn't need the F1-style ResetCalibration /
+		 * StartCalibration -- factory-trimmed at silicon. */
+		ADC1->CR2 |= ADC_CR2_ADON;
+#endif /* BOARD_F411_BLACKPILL */
 	}
 }
 
@@ -728,11 +811,46 @@ void ADC_Conversion (void)
 			adc_data[j] /= ADC_CONV_NUM;
 		}
 	}
-#else
-	/* F411: ADC1 + DMA2_Stream0 LL impl pending hardware-day verification.
-	 * Stub leaves adc_data[] unchanged so AnalogGet returns whatever the
-	 * last conversion (or factory init zero) wrote -- analog axes will
-	 * read as static on F411 today. */
+#elif defined(BOARD_F411_BLACKPILL)
+	/* F411 ADC averaging loop -- mirrors F103's ADC_CONV_NUM-pass mean.
+	 * Each pass: arm DMA2 Stream 4 with NDTR = adc_cnt at tmp_adc_data,
+	 * fire SWSTART, wait for stream TC, sum into adc_data[]. After
+	 * ADC_CONV_NUM passes, divide. */
+	if (adc_cnt > 0)
+	{
+		for (uint8_t j = 0; j < MAX_AXIS_NUM; ++j) adc_data[j] = 0;
+
+		for (uint8_t i = 0; i < ADC_CONV_NUM; ++i) {
+			DMA2_Stream4->CR &= ~DMA_SxCR_EN;
+			while (DMA2_Stream4->CR & DMA_SxCR_EN);
+			/* Clear stream 4 LIFCR/HIFCR flags before re-arming. Stream 4
+			 * lives in HISR/HIFCR (streams 4..7). The bit positions for
+			 * stream 4 are TCIF4 = bit 5, HTIF4 = bit 4, TEIF4 = bit 3,
+			 * DMEIF4 = bit 2, FEIF4 = bit 0 -- mask 0x3D. */
+			DMA2->HIFCR = (0x3DU << 0);
+			DMA2_Stream4->M0AR = (uint32_t)&tmp_adc_data[0];
+			DMA2_Stream4->NDTR = adc_cnt;
+			DMA2_Stream4->CR  |= DMA_SxCR_EN;
+
+			/* Software-start the regular sequence. SWSTART is in CR2
+			 * (bit 30 on F4). */
+			ADC1->SR = 0;
+			ADC1->CR2 |= ADC_CR2_SWSTART;
+
+			/* Wait for stream-4 transfer-complete (TCIF4 = bit 5 of HISR). */
+			while (!(DMA2->HISR & (1U << 5)));
+			DMA2->HIFCR = (1U << 5);
+
+			DMA2_Stream4->CR &= ~DMA_SxCR_EN;
+
+			for (uint8_t j = 0; j < MAX_AXIS_NUM; ++j) {
+				adc_data[j] += tmp_adc_data[j];
+			}
+		}
+		for (uint8_t j = 0; j < MAX_AXIS_NUM; ++j) {
+			adc_data[j] /= ADC_CONV_NUM;
+		}
+	}
 #endif
 }
 

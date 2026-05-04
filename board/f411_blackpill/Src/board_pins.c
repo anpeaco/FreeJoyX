@@ -43,7 +43,7 @@ pin_config_t pin_config[USED_PINS_NUM] =
 	{GPIOA, LL_GPIO_PIN_15,  15, 0},                                                      // 11
 	{GPIOB, LL_GPIO_PIN_0,   0,  0},                                                      // 12
 	{GPIOB, LL_GPIO_PIN_1,   1,  0},                                                      // 13
-	{GPIOB, LL_GPIO_PIN_3,   3,  PIN_CAP_SPI_SCK},                                        // 14 -- SPI1_SCK (AF5)
+	{GPIOB, LL_GPIO_PIN_3,   3,  PIN_CAP_SPI_SCK | PIN_CAP_I2C_SDA},                      // 14 -- SPI1_SCK (AF5) / I2C2_SDA (AF9, mutex with SPI1)
 	{GPIOB, LL_GPIO_PIN_4,   4,  PIN_CAP_SPI_MISO},                                       // 15 -- SPI1_MISO (AF5)
 	{GPIOB, LL_GPIO_PIN_5,   5,  PIN_CAP_SPI_MOSI},                                       // 16 -- SPI1_MOSI (AF5)
 	{GPIOB, LL_GPIO_PIN_6,   6,  PIN_CAP_FAST_ENCODER | PIN_CAP_TLE5011_GEN},             // 17 -- TIM4_CH1 (AF2) / TLE5011 GEN
@@ -147,14 +147,119 @@ void Board_PinWrite(uint8_t pin_idx, uint8_t high)
 
 void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir)
 {
-	/* SPI1 MOSI is PB5, AF5 on F411. Flip OutputType between push-pull
-	 * (TX, MCU drives) and open-drain (RX, sensor drives the line, MCU
-	 * listens on the same wire). Mode + AF are set once by the F411 SPI
-	 * bringup in Phase 5c; here we only touch OTYPER. */
+	/* SPI1 MOSI is PB5, AF5 on F411. Three modes:
+	 *   TX  -- AF push-pull (MCU drives the line)
+	 *   RX  -- AF open-drain (sensor drives, MCU listens via the
+	 *          same AF route -- TLE5011 use case)
+	 *   LISTEN_FLOATING -- plain input, AF disabled, no pull
+	 *          (TLE5012 turnaround needs a faster tristate than
+	 *          AF open-drain delivers) */
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-	if (dir == BOARD_TLE5011_BUS_DIR_RX) {
-		LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_OPENDRAIN);
-	} else {
-		LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_PUSHPULL);
+	switch (dir) {
+		case BOARD_TLE5011_BUS_DIR_TX:
+			LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_5, LL_GPIO_MODE_ALTERNATE);
+			LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_PUSHPULL);
+			LL_GPIO_SetPinPull(GPIOB, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+			break;
+		case BOARD_TLE5011_BUS_DIR_RX:
+			LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_5, LL_GPIO_MODE_ALTERNATE);
+			LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_OPENDRAIN);
+			LL_GPIO_SetPinPull(GPIOB, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+			break;
+		case BOARD_TLE5011_BUS_DIR_LISTEN_FLOATING:
+			LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_5, LL_GPIO_MODE_INPUT);
+			LL_GPIO_SetPinPull(GPIOB, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+			break;
 	}
+}
+
+/* Per-(pin slot, role) -> AF code lookup. Only entries that match a real
+ * AF route on F411 BlackPill UFQFPN48 -- mirror of the PIN_CAP_* bits set
+ * in pin_config[] above + the AF1..AF15 nibble each peripheral expects per
+ * the F411 datasheet "Table 9. Alternate function mapping". The PA9 row
+ * is the reason this table can't be derived from pin_config[].caps alone:
+ * the same physical pin carries TIM1_CH2 on AF1 (Encoder 1 B) AND
+ * USART1_TX on AF7 (SimHub), and the right code depends on which
+ * peripheral the application has chosen.
+ *
+ * Table is searched linearly; ~16 entries on a Cortex-M4 at 96 MHz, fine.
+ * If the lookup misses (caller asked for a role on a pin that doesn't
+ * carry it), the helper writes nothing -- matches Board_PinSetMode's
+ * silent out-of-range pattern. */
+static const struct {
+	uint8_t          pin_idx;
+	board_af_role_t  role;
+	uint32_t         af_code;	/* LL_GPIO_AF_0..LL_GPIO_AF_15 */
+} f411_af_map[] = {
+	/* PA6 = TIM3_CH1 (LED PWM, Phase 8b) */
+	{  6, BOARD_AF_ROLE_LED_PWM,        LL_GPIO_AF_2 },
+	/* PA8 = TIM1_CH1 (Encoder 1 A) -- Phase 8b also routes LED PWM here when
+	 *       slot 8 is tagged LED_PWM and slot 10 isn't carrying RGB */
+	{  8, BOARD_AF_ROLE_FAST_ENCODER,   LL_GPIO_AF_1 },
+	{  8, BOARD_AF_ROLE_LED_PWM,        LL_GPIO_AF_1 },
+	/* PA9 = TIM1_CH2 (Encoder 1 B) OR USART1_TX (SimHub) -- mutex enforced
+	 *       configurator-side. The two AF codes are unrelated; this is why
+	 *       the helper is needed at all. */
+	{  9, BOARD_AF_ROLE_FAST_ENCODER,   LL_GPIO_AF_1 },
+	{  9, BOARD_AF_ROLE_UART_TX,        LL_GPIO_AF_7 },
+	/* PA10 = TIM1_CH3 (WS2812B, Phase 8c) */
+	{ 10, BOARD_AF_ROLE_LED_RGB,        LL_GPIO_AF_1 },
+	/* PB0 / PB1 = TIM3_CH3 / TIM3_CH4 (LED PWM) */
+	{ 12, BOARD_AF_ROLE_LED_PWM,        LL_GPIO_AF_2 },
+	{ 13, BOARD_AF_ROLE_LED_PWM,        LL_GPIO_AF_2 },
+	/* PB3 / PB4 / PB5 = SPI1 SCK/MISO/MOSI on AF5. PB3 also routes
+	 * I2C2_SDA on AF9 -- mutex with SPI1_SCK enforced configurator-side
+	 * (cap bits PIN_CAP_SPI_SCK | PIN_CAP_I2C_SDA both set on slot 14). */
+	{ 14, BOARD_AF_ROLE_SPI_SCK,        LL_GPIO_AF_5 },
+	{ 14, BOARD_AF_ROLE_I2C_SDA,        LL_GPIO_AF_9 },
+	{ 15, BOARD_AF_ROLE_SPI_MISO,       LL_GPIO_AF_5 },
+	{ 16, BOARD_AF_ROLE_SPI_MOSI,       LL_GPIO_AF_5 },
+	/* PB6 = TIM4_CH1 -- carries Encoder 2 A *or* TLE5011 GEN clock (mutex
+	 *       configurator-side). Same AF code in either case (AF2). */
+	{ 17, BOARD_AF_ROLE_FAST_ENCODER,   LL_GPIO_AF_2 },
+	{ 17, BOARD_AF_ROLE_TLE5011_GEN,    LL_GPIO_AF_2 },
+	/* PB7 = TIM4_CH2 (Encoder 2 B) */
+	{ 18, BOARD_AF_ROLE_FAST_ENCODER,   LL_GPIO_AF_2 },
+	/* PB10 = I2C2_SCL on AF4 */
+	{ 21, BOARD_AF_ROLE_I2C_SCL,        LL_GPIO_AF_4 },
+	/* I2C2_SDA on UFQFPN48: PB11 isn't bonded; the configurator enforces
+	 * pairing with the alternate I2C SDA pin. Slot 22 (PB2) cannot carry
+	 * I2C2_SDA -- if the build needs I2C, the SDA cap must move to a pin
+	 * that's actually bonded for I2C on F411 (PB3 AF9 if SPI1 isn't in
+	 * use, otherwise the user has to free up PB7 = I2C1_SDA AF4 and
+	 * route I2C1 instead of I2C2). Deferred to hardware-day verification. */
+};
+
+void Board_PinSetAfRole(uint8_t pin_idx, board_af_role_t role)
+{
+	if (pin_idx >= USED_PINS_NUM) return;
+
+	for (size_t i = 0; i < sizeof(f411_af_map) / sizeof(f411_af_map[0]); ++i) {
+		if (f411_af_map[i].pin_idx == pin_idx && f411_af_map[i].role == role) {
+			GPIO_TypeDef *port = pin_config[pin_idx].port;
+			uint32_t      pin  = pin_config[pin_idx].pin;	/* LL_GPIO_PIN_x bitmask */
+			/* GPIO port clock should already be on from Board_PinSetMode;
+			 * re-enable here is cheap and idempotent. */
+			if      (port == GPIOA) LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+			else if (port == GPIOB) LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+			else if (port == GPIOC) LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+			/* AFR[0] holds pins 0..7, AFR[1] holds pins 8..15. The LL
+			 * helpers shift by POSITION_VAL(pin_bitmask)*4 inside their
+			 * own register, so calling the wrong helper for a pin out
+			 * of its range writes a 4-bit nibble at an undefined offset.
+			 * Dispatch on the pin's bit-position number, which board_pins
+			 * stashes in pin_config[].number. */
+			(void)pin;
+			if (pin_config[pin_idx].number < 8) {
+				LL_GPIO_SetAFPin_0_7(port, pin_config[pin_idx].pin, f411_af_map[i].af_code);
+			} else {
+				LL_GPIO_SetAFPin_8_15(port, pin_config[pin_idx].pin, f411_af_map[i].af_code);
+			}
+			return;
+		}
+	}
+	/* Lookup miss: pin doesn't carry the requested role on this board.
+	 * Silent -- matches the Board_PinSetMode pattern of out-of-range
+	 * pin_idx being a no-op. The configurator-side cap check should have
+	 * prevented this; reaching here is a programmer error not a user one. */
 }

@@ -1,12 +1,12 @@
 /**
   ******************************************************************************
   * @file           : stm32f4xx_it.c
-  * @brief          : F411 BlackPill interrupt vector bodies.
+  * @brief          : F411 BlackPill core/USB interrupt vectors.
   *
-  * Minimal stubs for Phase 2 (blinky). Cortex-M exception handlers loop
-  * forever on a fault so a debugger can locate the cause. Peripheral IRQs
-  * (TIM, SPI, I2C, USB, etc.) are added as the matching peripherals get
-  * wired in subsequent phases.
+  * Shared between application and bootloader builds. App-only sensor /
+  * peripheral DMA IRQ handlers (DMA2_Stream0/3/7, DMA1_Stream2/7,
+  * I2C2_ER) live in board_sensor_irqs.c so the bootloader doesn't drag
+  * in application-side dispatch headers.
   ******************************************************************************
   */
 
