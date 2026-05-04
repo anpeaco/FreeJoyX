@@ -104,7 +104,17 @@ void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir)
 	GPIO_InitTypeDef gpio_init = {0};
 	gpio_init.GPIO_Speed = GPIO_Speed_50MHz;
 	gpio_init.GPIO_Pin   = GPIO_Pin_5;
-	gpio_init.GPIO_Mode  = (dir == BOARD_TLE5011_BUS_DIR_RX) ? GPIO_Mode_AF_OD : GPIO_Mode_AF_PP;
+	switch (dir) {
+		case BOARD_TLE5011_BUS_DIR_TX:
+			gpio_init.GPIO_Mode = GPIO_Mode_AF_PP;
+			break;
+		case BOARD_TLE5011_BUS_DIR_RX:
+			gpio_init.GPIO_Mode = GPIO_Mode_AF_OD;
+			break;
+		case BOARD_TLE5011_BUS_DIR_LISTEN_FLOATING:
+			gpio_init.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+			break;
+	}
 	GPIO_Init(GPIOB, &gpio_init);
 }
 

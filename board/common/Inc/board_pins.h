@@ -121,6 +121,13 @@ void    Board_PinWrite(uint8_t pin_idx, uint8_t high);
 typedef enum {
 	BOARD_TLE5011_BUS_DIR_TX = 0,	/* MCU drives MOSI: AF push-pull */
 	BOARD_TLE5011_BUS_DIR_RX = 1,	/* sensor drives line: AF open-drain (MCU listens) */
+	/* TLE5012 listen mode: switch MOSI to plain floating input (no AF,
+	 * no pull). The TLE5012 sensor briefly tristates the line during
+	 * its turnaround between MCU-write and sensor-read; AF open-drain
+	 * doesn't release fast enough for that handshake. F103 originally
+	 * inlined a GPIO_Init in DMA1_Channel3_IRQHandler for this; lifted
+	 * here so the SPI TX-complete dispatcher works cross-board. */
+	BOARD_TLE5011_BUS_DIR_LISTEN_FLOATING = 2,
 } board_tle5011_bus_dir_t;
 
 void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir);

@@ -147,15 +147,29 @@ void Board_PinWrite(uint8_t pin_idx, uint8_t high)
 
 void Board_TLE5011_BusDir(board_tle5011_bus_dir_t dir)
 {
-	/* SPI1 MOSI is PB5, AF5 on F411. Flip OutputType between push-pull
-	 * (TX, MCU drives) and open-drain (RX, sensor drives the line, MCU
-	 * listens on the same wire). Mode + AF are set once by the F411 SPI
-	 * bringup in Phase 5c; here we only touch OTYPER. */
+	/* SPI1 MOSI is PB5, AF5 on F411. Three modes:
+	 *   TX  -- AF push-pull (MCU drives the line)
+	 *   RX  -- AF open-drain (sensor drives, MCU listens via the
+	 *          same AF route -- TLE5011 use case)
+	 *   LISTEN_FLOATING -- plain input, AF disabled, no pull
+	 *          (TLE5012 turnaround needs a faster tristate than
+	 *          AF open-drain delivers) */
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-	if (dir == BOARD_TLE5011_BUS_DIR_RX) {
-		LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_OPENDRAIN);
-	} else {
-		LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_PUSHPULL);
+	switch (dir) {
+		case BOARD_TLE5011_BUS_DIR_TX:
+			LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_5, LL_GPIO_MODE_ALTERNATE);
+			LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_PUSHPULL);
+			LL_GPIO_SetPinPull(GPIOB, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+			break;
+		case BOARD_TLE5011_BUS_DIR_RX:
+			LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_5, LL_GPIO_MODE_ALTERNATE);
+			LL_GPIO_SetPinOutputType(GPIOB, LL_GPIO_PIN_5, LL_GPIO_OUTPUT_OPENDRAIN);
+			LL_GPIO_SetPinPull(GPIOB, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+			break;
+		case BOARD_TLE5011_BUS_DIR_LISTEN_FLOATING:
+			LL_GPIO_SetPinMode(GPIOB, LL_GPIO_PIN_5, LL_GPIO_MODE_INPUT);
+			LL_GPIO_SetPinPull(GPIOB, LL_GPIO_PIN_5, LL_GPIO_PULL_NO);
+			break;
 	}
 }
 

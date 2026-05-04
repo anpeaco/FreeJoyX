@@ -38,6 +38,7 @@
 #include "as5048a.h"
 #include "ads1115.h"
 #include "as5600.h"
+#include "sensor_dispatch.h"
 #include "config.h"
 #include "uart.h"
 
@@ -186,281 +187,46 @@ void SysTick_Handler(void)
  * handler in board/<chip>/Src/board_tick.c calls Board_TickISR which
  * is now defined in usb_app.c. */
 
-// SPI Rx Complete
+/* SPI/I2C DMA-completion sensor chain dispatch lives in
+ * application/Src/sensor_dispatch.c so the F411 IT file can call the
+ * same bodies. The F103 IRQs below clear DMA flags + disable the
+ * channel (StdPeriph) and delegate. */
+
 void DMA1_Channel2_IRQHandler(void)
 {
-	uint8_t i=0;
-	
-	if (DMA_GetITStatus(DMA1_IT_TC2))
-	{
+	if (DMA_GetITStatus(DMA1_IT_TC2)) {
 		DMA_ClearITPendingBit(DMA1_IT_TC2);
 		DMA_Cmd(DMA1_Channel2, DISABLE);
-		
-		// wait SPI transfer to end
-		while(SPI1->SR & SPI_SR_BSY);
-		
-		// searching for active sensor
-		for (i=0; i<MAX_AXIS_NUM; i++)
-		{
-			if (sensors[i].source >= 0 && !sensors[i].rx_complete) break;
-		}
-		// Close connection to the sensor
-		if (i < MAX_AXIS_NUM)
-		{
-			if (sensors[i].type == TLE5011)
-			{
-				TLE5011_StopDMA(&sensors[i++]);
-			}
-			else if (sensors[i].type == TLE5012)
-			{
-				TLE5012_StopDMA(&sensors[i++]);
-			}
-			else if (sensors[i].type == MCP3201)
-			{
-				MCP320x_StopDMA(&sensors[i++]);
-			}
-			else if (sensors[i].type == MCP3202)
-			{
-				MCP320x_StopDMA(&sensors[i]);
-				// get data from next channel
-				if (sensors[i].curr_channel < 1)	
-				{
-					MCP320x_StartDMA(&sensors[i], sensors[i].curr_channel + 1);
-					return;
-				}
-				i++;
-			}	
-			else if (sensors[i].type == MCP3204)
-			{
-				MCP320x_StopDMA(&sensors[i]);
-				// get data from next channel
-				if (sensors[i].curr_channel < 3)	
-				{
-					MCP320x_StartDMA(&sensors[i], sensors[i].curr_channel + 1);
-					return;
-				}
-				i++;
-			}	
-			else if (sensors[i].type == MCP3208)
-			{
-				MCP320x_StopDMA(&sensors[i]);
-				// get data from next channel
-				if (sensors[i].curr_channel < 7)	
-				{
-					MCP320x_StartDMA(&sensors[i], sensors[i].curr_channel + 1);
-					return;
-				}
-				i++;
-			}
-			else if (sensors[i].type == MLX90363)
-			{
-				MLX90363_StopDMA(&sensors[i++]);
-			}
-			else if (sensors[i].type == MLX90393_SPI)
-			{
-				MLX90393_StopDMA(&sensors[i++]);
-			}
-			else if (sensors[i].type == AS5048A_SPI)
-			{
-				AS5048A_StopDMA(&sensors[i++]);
-			}
-		}
-		
-		
-		// Process next sensor
-		for ( ;i<MAX_AXIS_NUM;i++)
-		{
-			if (sensors[i].source >= 0 && sensors[i].rx_complete && sensors[i].tx_complete)
-			{
-				if (sensors[i].type == TLE5011)
-				{
-					TLE5011_StartDMA(&sensors[i]);
-					return;
-				}
-				else if (sensors[i].type == TLE5012)
-				{
-					TLE5012_StartDMA(&sensors[i]);
-					return;
-				}
-				else if (sensors[i].type == MCP3201 ||
-								 sensors[i].type == MCP3202 ||
-								 sensors[i].type == MCP3204 ||
-								 sensors[i].type == MCP3208)
-				{
-					MCP320x_StartDMA(&sensors[i], 0);
-					return;
-				}
-				else if (sensors[i].type == MLX90363)
-				{
-					MLX90363_StartDMA(&sensors[i]);
-					return;
-				}
-				else if (sensors[i].type == MLX90393_SPI)
-				{
-					MLX90393_StartDMA(MLX_SPI, &sensors[i]);
-					return;
-				}
-				else if (sensors[i].type == AS5048A_SPI)
-				{
-					AS5048A_StartDMA(&sensors[i]);
-					return;
-				}
-			}
-		}
+		Sensor_OnSpiRxComplete();
 	}
 }
 
-// SPI Tx Complete
 void DMA1_Channel3_IRQHandler(void)
 {
-	uint8_t i=0;
-	
-	if (DMA_GetITStatus(DMA1_IT_TC3))
-	{
+	if (DMA_GetITStatus(DMA1_IT_TC3)) {
 		DMA_ClearITPendingBit(DMA1_IT_TC3);
 		DMA_Cmd(DMA1_Channel3, DISABLE);
-		
-		// wait SPI transfer to end
-		while(!(SPI1->SR & SPI_SR_TXE));
-		while(SPI1->SR & SPI_SR_BSY);
-		
-		// searching for active sensor
-		for (i=0; i<MAX_AXIS_NUM; i++)
-		{
-			if (sensors[i].source >= 0 && !sensors[i].tx_complete)
-			{
-				sensors[i].tx_complete = 1;
-				sensors[i].rx_complete = 0;
-				if (sensors[i].type == TLE5011)
-				{
-					SPI_HalfDuplex_Receive(&sensors[i].data[2], 6, TLE5011_SPI_MODE);					
-				}
-				if (sensors[i].type == TLE5012)
-				{
-					// switch MOSI back to open-drain
-					GPIO_InitTypeDef GPIO_InitStructure;
-					GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-					GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
-					GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;						
-					GPIO_Init (GPIOB,&GPIO_InitStructure);
-					
-					SPI_HalfDuplex_Receive(&sensors[i].data[2], 4, TLE5012_SPI_MODE);					
-				}
-				break;
-			}
-		}
+		Sensor_OnSpiTxComplete();
 	}
 }
 
-// I2C Tx Complete (used for ADS1115 mux setting operation) 
 void DMA1_Channel4_IRQHandler(void)
 {
-	uint8_t i=0;
-	uint32_t ticks = I2C_TIMEOUT;
-	
-	if (DMA_GetFlagStatus(DMA1_FLAG_TC4))
-	{
-		// Clear transmission complete flag 
+	if (DMA_GetFlagStatus(DMA1_FLAG_TC4)) {
 		DMA_ClearFlag(DMA1_FLAG_TC4);
-		
-		I2C_DMACmd(I2C2,DISABLE);	
-		DMA_Cmd(DMA1_Channel4,DISABLE);
-		
-		// EV8_2: Wait until BTF is set before programming the STOP
-    while (((I2C2->SR1 & 0x00004) != 0x000004) && --ticks) {;}
-		if(ticks == 0)	
-		{
-			sensors[i].tx_complete = 1;
-			sensors[i].rx_complete = 1;
-			return;
-		}
-		ticks = I2C_TIMEOUT;
-		
-    // Program the STOP
-    I2C_GenerateSTOP(I2C2, ENABLE);
-		
-    /* Make sure that the STOP bit is cleared by Hardware */
-		while ((I2C2->CR1&0x200) == 0x200 && --ticks);
-		if (ticks == 0)	
-		{
-			sensors[i].tx_complete = 1;
-			sensors[i].rx_complete = 1;
-			return;
-		}
-		
-		for (i = 0; i < MAX_AXIS_NUM; i++)
-		{
-			// searching for active sensor
-			if (sensors[i].source == (pin_t)SOURCE_I2C && !sensors[i].tx_complete)
-			{			
-				sensors[i++].tx_complete = 1;			// TODO: check sensor disconnection				
-				break;	
-			}
-		}
-		
-		// start processing for next I2C sensor 
-		for (; i<MAX_AXIS_NUM; i++)
-		{
-				if (sensors[i].source == (pin_t)SOURCE_I2C && sensors[i].rx_complete && sensors[i].tx_complete)
-				{		
-					if (sensors[i].type == AS5600)
-					{
-						status = AS5600_StartDMA(&sensors[i]);
-						if (status != 0) continue;
-						else break;
-					}
-					else if (sensors[i].type == ADS1115)
-					{
-						status = ADS1115_StartDMA(&sensors[i], sensors[i].curr_channel);
-						if (status != 0) continue;
-						else break;
-					}
-				}
-			}
+		I2C_DMACmd(I2C2, DISABLE);
+		DMA_Cmd(DMA1_Channel4, DISABLE);
+		Sensor_OnI2cTxComplete();
 	}
 }
 
-// I2C Rx Complete
 void DMA1_Channel5_IRQHandler(void)
 {
-	uint8_t i=0;
-	uint32_t ticks = I2C_TIMEOUT;
-	
-	if (DMA_GetFlagStatus(DMA1_FLAG_TC5))
-	{
-		// Clear transmission complete flag 
+	if (DMA_GetFlagStatus(DMA1_FLAG_TC5)) {
 		DMA_ClearFlag(DMA1_FLAG_TC5);
-		
-		I2C_DMACmd(I2C2,DISABLE);	
-		DMA_Cmd(DMA1_Channel5,DISABLE);
-		
-		I2C_GenerateSTOP(I2C2, ENABLE);
-		
-		
-		while ((I2C2->CR1&0x200) == 0x200 && --ticks);
-		if (ticks == 0)	
-		{
-			sensors[i].tx_complete = 1;
-			sensors[i].rx_complete = 1;
-			return;
-		}
-		
-		for (i = 0; i < MAX_AXIS_NUM; i++)
-		{
-			// searching for active sensor
-			if (sensors[i].source == (pin_t)SOURCE_I2C && !sensors[i].rx_complete)
-			{
-				sensors[i].ok_cnt++;
-				sensors[i].rx_complete = 1;		
-
-				if (sensors[i].type == ADS1115)
-				{
-					// set mux to next channel
-					uint8_t channel = (sensors[i].curr_channel < 3) ? (sensors[i].curr_channel + 1) : 0;
-					status = ADS1115_SetMuxDMA(&sensors[i], channel);
-				}
-			}
-		}
+		I2C_DMACmd(I2C2, DISABLE);
+		DMA_Cmd(DMA1_Channel5, DISABLE);
+		Sensor_OnI2cRxComplete();
 	}
 }
 
