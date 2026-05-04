@@ -5,19 +5,34 @@ TARGET ?= f103
 # Wire-format version extracted from the firmware's common_defines.h
 # header. Used to name versioned firmware artefacts so multiple builds
 # can coexist in the configurator's firmware/ folder without colliding.
-# Format example: 0x1770 -> "1770".
+# FW_VERSION is the raw 4-hex-digit value (e.g. "1770"); FW_TAG is the
+# user-facing rendering (e.g. "v1.7.7b0") that matches what the
+# configurator shows in its Firmware row.
 FW_VERSION := $(shell grep -E "^\#define FIRMWARE_VERSION" \
                        ../application/Inc/common_defines.h | \
                   awk '{print $$3}' | sed 's/0x//' | head -c 4)
+FW_TAG := v$(shell echo $(FW_VERSION) | sed 's/\(.\)\(.\)\(.\)\(.\)/\1.\2.\3b\4/')
 
-# RELEASE_VERSION (optional): when publishing a tagged release, set this
-# to the release tag (e.g. v0.2.0) so the versioned artefacts are named
-# after the human-friendly tag rather than the raw firmware-version mask.
+# RELEASE_VERSION (optional override). When unset, artefacts are named
+# after FW_TAG so the filename matches the firmware version shown in
+# the configurator's Firmware row -- e.g. FIRMWARE_VERSION 0x1770
+# produces "freejoyx-f103-app-v1.7.7b0.bin", and the device's UI also
+# reports v1.7.7b0. No conflicting numbering for users to reconcile.
+#
+# When set (typically to a GitHub release tag like v1.7.7b0 or a fix
+# variant like v1.7.7b0-r1), artefacts are named after the override
+# instead.
+#
 # Convention:
-#   RELEASE_VERSION unset    -> freejoyx-f103-app-fw1770.bin   (dev build)
-#   RELEASE_VERSION=v0.2.0   -> freejoyx-f103-app-v0.2.0.bin   (tagged release)
+#   RELEASE_VERSION unset             -> freejoyx-f103-app-v1.7.7b0.bin
+#                                        (matches UI; default for
+#                                         dev builds and tagged releases
+#                                         that don't need a suffix)
+#   RELEASE_VERSION=v1.7.7b0-r1       -> freejoyx-f103-app-v1.7.7b0-r1.bin
+#                                        (release-fix without a wire-
+#                                         format bump -- bug-fix only)
 RELEASE_VERSION ?=
-NAME_VERSION := $(if $(RELEASE_VERSION),$(RELEASE_VERSION),fw$(FW_VERSION))
+NAME_VERSION := $(if $(RELEASE_VERSION),$(RELEASE_VERSION),$(FW_TAG))
 
 # CONFX_FIRMWARE_DIR (optional): absolute path to the configurator's
 # <exe>/firmware/ folder. When set, install-firmware copies versioned
