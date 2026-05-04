@@ -43,7 +43,7 @@ pin_config_t pin_config[USED_PINS_NUM] =
 	{GPIOA, LL_GPIO_PIN_15,  15, 0},                                                      // 11
 	{GPIOB, LL_GPIO_PIN_0,   0,  0},                                                      // 12
 	{GPIOB, LL_GPIO_PIN_1,   1,  0},                                                      // 13
-	{GPIOB, LL_GPIO_PIN_3,   3,  PIN_CAP_SPI_SCK},                                        // 14 -- SPI1_SCK (AF5)
+	{GPIOB, LL_GPIO_PIN_3,   3,  PIN_CAP_SPI_SCK | PIN_CAP_I2C_SDA},                      // 14 -- SPI1_SCK (AF5) / I2C2_SDA (AF9, mutex with SPI1)
 	{GPIOB, LL_GPIO_PIN_4,   4,  PIN_CAP_SPI_MISO},                                       // 15 -- SPI1_MISO (AF5)
 	{GPIOB, LL_GPIO_PIN_5,   5,  PIN_CAP_SPI_MOSI},                                       // 16 -- SPI1_MOSI (AF5)
 	{GPIOB, LL_GPIO_PIN_6,   6,  PIN_CAP_FAST_ENCODER | PIN_CAP_TLE5011_GEN},             // 17 -- TIM4_CH1 (AF2) / TLE5011 GEN
@@ -193,8 +193,11 @@ static const struct {
 	/* PB0 / PB1 = TIM3_CH3 / TIM3_CH4 (LED PWM) */
 	{ 12, BOARD_AF_ROLE_LED_PWM,        LL_GPIO_AF_2 },
 	{ 13, BOARD_AF_ROLE_LED_PWM,        LL_GPIO_AF_2 },
-	/* PB3 / PB4 / PB5 = SPI1 SCK/MISO/MOSI on AF5 */
+	/* PB3 / PB4 / PB5 = SPI1 SCK/MISO/MOSI on AF5. PB3 also routes
+	 * I2C2_SDA on AF9 -- mutex with SPI1_SCK enforced configurator-side
+	 * (cap bits PIN_CAP_SPI_SCK | PIN_CAP_I2C_SDA both set on slot 14). */
 	{ 14, BOARD_AF_ROLE_SPI_SCK,        LL_GPIO_AF_5 },
+	{ 14, BOARD_AF_ROLE_I2C_SDA,        LL_GPIO_AF_9 },
 	{ 15, BOARD_AF_ROLE_SPI_MISO,       LL_GPIO_AF_5 },
 	{ 16, BOARD_AF_ROLE_SPI_MOSI,       LL_GPIO_AF_5 },
 	/* PB6 = TIM4_CH1 -- carries Encoder 2 A *or* TLE5011 GEN clock (mutex

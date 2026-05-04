@@ -78,3 +78,44 @@ void DMA2_Stream7_IRQHandler(void)
 		 * the EnableDMAReq_TX bit. */
 	}
 }
+
+/* I2C2 RX-complete via DMA1 Stream 2 Channel 7. ADS1115 / AS5600
+ * conversion-complete handler in F103 lives in
+ * stm32f10x_it.c::DMA1_Channel5_IRQHandler -- the body generates STOP,
+ * polls for STOP-complete, then chains the next sensor in the loop.
+ * That dispatch lands in the upcoming sensor_dispatch hoist; minimal
+ * flag-clear here so the polling loops in the application path exit
+ * cleanly. */
+void DMA1_Stream2_IRQHandler(void)
+{
+	if (LL_DMA_IsActiveFlag_TC2(DMA1)) {
+		LL_DMA_ClearFlag_TC2(DMA1);
+		LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_2);
+		I2C2->CR2 &= ~I2C_CR2_DMAEN;
+		I2C2->CR1 |= I2C_CR1_STOP;
+	}
+}
+
+/* I2C2 TX-complete via DMA1 Stream 7 Channel 7. F103's analogue is
+ * DMA1_Channel4_IRQHandler which polls BTF + generates STOP +
+ * mux-set chain (see sensor_dispatch hoist note above). */
+void DMA1_Stream7_IRQHandler(void)
+{
+	if (LL_DMA_IsActiveFlag_TC7(DMA1)) {
+		LL_DMA_ClearFlag_TC7(DMA1);
+		LL_DMA_DisableStream(DMA1, LL_DMA_STREAM_7);
+		I2C2->CR2 &= ~I2C_CR2_DMAEN;
+	}
+}
+
+/* I2C2 error interrupt -- AF / BUS / TIMEOUT / ARLO. F103 enables this
+ * but the application doesn't drive any error recovery from the IRQ
+ * (it relies on the SWRST + reinit path inside the per-transfer
+ * entry points). Minimal body: clear the latched error bits so the
+ * ER IRQ stops re-firing. */
+void I2C2_ER_IRQHandler(void)
+{
+	I2C2->SR1 &= ~(I2C_SR1_BERR | I2C_SR1_ARLO | I2C_SR1_AF |
+	               I2C_SR1_OVR  | I2C_SR1_PECERR | I2C_SR1_TIMEOUT |
+	               I2C_SR1_SMBALERT);
+}
