@@ -64,3 +64,17 @@ void DMA2_Stream3_IRQHandler(void)
 		while (SPI1->SR & SPI_SR_BSY) { }
 	}
 }
+
+/* USART1 TX-complete via DMA2 Stream 7 Channel 4. simhub telemetry burst
+ * lands here -- F103's analogue is DMA1_Channel4 which only clears the
+ * flag and disables the channel; matching that minimal behaviour here. */
+void DMA2_Stream7_IRQHandler(void)
+{
+	if (LL_DMA_IsActiveFlag_TC7(DMA2)) {
+		LL_DMA_ClearFlag_TC7(DMA2);
+		LL_DMA_DisableStream(DMA2, LL_DMA_STREAM_7);
+		/* USART DMA TX request stays armed across calls -- the next
+		 * UART_WriteNonBlocking re-enables the stream. No need to flap
+		 * the EnableDMAReq_TX bit. */
+	}
+}
