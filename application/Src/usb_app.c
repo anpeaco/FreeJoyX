@@ -77,6 +77,42 @@ static uint8_t            uart_message_code = 0;
 volatile int32_t  millis              = 0;
 volatile int32_t  joy_millis          = 0;
 volatile int32_t  configurator_millis = 0;
+
+#ifdef BOARD_F411_BLACKPILL
+/* F411 single-interface: all REPORT_ID INs share EP1 IN, so the
+ * App_HidOutDispatch path can't reliably send a response from USB IRQ
+ * context (the previous tick's joy report is still in flight). Queue
+ * the response in this one-deep buffer and let Board_TickISR drain it
+ * on a free tick. */
+static uint8_t  pending_in_buf[64];
+static uint16_t pending_in_len = 0;
+static volatile uint8_t pending_in_active = 0;
+
+/* Diagnostic counters so we can tell which step is firing on each
+ * Read-Config attempt. Surface them by toggling PC13 in distinct
+ * patterns from Board_TickISR. */
+volatile uint16_t diag_out_count    = 0;  /* CONFIG_IN OUT received from host */
+volatile uint16_t diag_queue_count  = 0;  /* response queued (first-try BUSY) */
+volatile uint16_t diag_drain_ok     = 0;  /* drain succeeded */
+volatile uint16_t diag_drain_busy   = 0;  /* drain returned BUSY this tick */
+
+static void App_QueueOrSendInReport(uint8_t report_id, const uint8_t *data, uint16_t length)
+{
+	/* Try once -- if the EP is idle (rare in IRQ context but possible)
+	 * the response goes out immediately and we skip the queue. */
+	if (Board_USB_SendReport(report_id, (uint8_t *)data, length) == 0) {
+		return;
+	}
+	/* Otherwise stash for Board_TickISR to drain. Overwrites any
+	 * previously-pending response -- the protocol is request/response
+	 * sequential so this shouldn't lose anything in practice. */
+	if (length > sizeof(pending_in_buf)) length = sizeof(pending_in_buf);
+	memcpy(pending_in_buf, data, length);
+	pending_in_len    = length;
+	pending_in_active = 1;
+	diag_queue_count++;
+}
+#endif
 volatile int64_t  encoder_ticks       = 0;
 volatile int64_t  adc_ticks           = 0;
 volatile int64_t  sensors_ticks       = 1;
@@ -105,6 +141,13 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 	uint8_t config_in_cnt;
 	uint8_t config_out_cnt;
 	uint8_t reportId = hid_buf[0];
+
+#ifdef BOARD_F411_BLACKPILL
+	/* Any OUT report received -- light PC13 to confirm OUT path
+	 * is alive on F411. diag_out_count stops at first OUT;
+	 * pending_in_active still reflects queued config response. */
+	diag_out_count++;
+#endif
 
 	if (reportId == REPORT_ID_PARAM) {
 		configurator_millis = GetMillis() + 30000;
@@ -146,7 +189,11 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 					       62);
 				}
 
+#ifdef BOARD_F411_BLACKPILL
+				App_QueueOrSendInReport(REPORT_ID_CONFIG_IN, tmp_buf, 64);
+#else
 				Board_USB_SendReport(REPORT_ID_CONFIG_IN, tmp_buf, 64);
+#endif
 			}
 			break;
 
@@ -163,14 +210,22 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 				config_out_cnt = hid_buf[1] + 1;
 				tmp_buf[0] = REPORT_ID_CONFIG_OUT;
 				tmp_buf[1] = config_out_cnt;
+#ifdef BOARD_F411_BLACKPILL
+				App_QueueOrSendInReport(REPORT_ID_CONFIG_OUT, tmp_buf, 2);
+#else
 				Board_USB_SendReport(REPORT_ID_CONFIG_OUT, tmp_buf, 2);
+#endif
 			} else {
 				/* Last packet received. Check version + board_id. */
 				if (((tmp_dev_config.firmware_version & 0xFFF0) != (FIRMWARE_VERSION & 0xFFF0)) ||
 				    (tmp_dev_config.board_id != BOARD_ID)) {
 					tmp_buf[0] = REPORT_ID_CONFIG_OUT;
 					tmp_buf[1] = 0xFE;
+#ifdef BOARD_F411_BLACKPILL
+					App_QueueOrSendInReport(REPORT_ID_CONFIG_OUT, tmp_buf, 2);
+#else
 					Board_USB_SendReport(REPORT_ID_CONFIG_OUT, tmp_buf, 2);
+#endif
 					Board_VersionMismatchBlink();
 				} else {
 					tmp_dev_config.firmware_version = FIRMWARE_VERSION;
@@ -211,6 +266,50 @@ void Board_TickISR(void)
 
 	AppConfigGet(&tmp_app_config);
 
+#ifdef BOARD_F411_BLACKPILL
+	/* Drain a deferred CONFIG_IN/OUT response from App_HidOutDispatch
+	 * before considering joy/params -- the OUT IRQ couldn't send
+	 * directly because EP1 IN was busy with a previous joy report.
+	 * One response per tick; skip the rest of this tick on success
+	 * so we don't immediately re-busy the EP. */
+	if (pending_in_active) {
+		if (Board_USB_SendReport(0, pending_in_buf, pending_in_len) == 0) {
+			pending_in_active = 0;
+			diag_drain_ok++;
+		} else {
+			diag_drain_busy++;
+		}
+		return;
+	}
+
+	/* Diagnostic: PC13 mirrors the relevant counters.
+	 *   Solid ON  -> some OUT report received since boot (diag_out_count > 0)
+	 *   Blinking  -> pending_in_active currently set (queue not draining)
+	 *   ~1 Hz heartbeat otherwise -- proves TIM2 ISR running. */
+	{
+		GPIOC->MODER &= ~GPIO_MODER_MODER13;
+		GPIOC->MODER |= GPIO_MODER_MODER13_0;
+		if (diag_out_count == 0) {
+			/* No OUT yet -- 1 Hz heartbeat from TIM2. */
+			static uint32_t hb_tick = 0;
+			if (++hb_tick >= 1000) {
+				hb_tick = 0;
+				GPIOC->ODR ^= (1U << 13);
+			}
+		} else {
+			/* OUT received: pin LED on. If we ever queued a
+			 * response that's still pending, it stays on
+			 * indefinitely (drain failing). If drain_ok keeps
+			 * up, the LED briefly blips off. */
+			if (pending_in_active) {
+				GPIOC->BSRR = GPIO_BSRR_BR_13;  /* on (active low) */
+			} else {
+				GPIOC->BSRR = GPIO_BSRR_BS_13;  /* off */
+			}
+		}
+	}
+#endif
+
 	/* Joystick + params transmit on the configurator-defined cadence. */
 	if (millis - joy_millis >= dev_config.exchange_period_ms) {
 		joy_millis = millis;
@@ -239,6 +338,48 @@ void Board_TickISR(void)
 			}
 		}
 
+#ifdef BOARD_F411_BLACKPILL
+		/* F411 single-interface: joy + params share EP1 IN, so queueing
+		 * joy first leaves params with USBD_BUSY forever. Alternate per
+		 * tick instead -- send joy on even ticks, params on odd ticks
+		 * during configurator sessions. The configurator only needs
+		 * params at a few Hz to populate the device-info card; a 1 kHz
+		 * joy + 1 kHz params split is plenty. (F103 uses two separate
+		 * endpoints on its multi-interface descriptor, so it doesn't
+		 * have this contention.)
+		 *
+		 * Diagnostic phase: force params unconditionally on F411 to
+		 * verify the device->host send path while we triage why
+		 * configurator_millis isn't getting set. */
+		{
+			static uint8_t alternation = 0;
+			alternation ^= 1;
+			if (alternation == 0) {
+				Board_USB_SendReport(REPORT_ID_JOY, report_buf, pos);
+			} else {
+				static uint8_t report = 0;
+				report_buf[0] = REPORT_ID_PARAM;
+				params_report.firmware_version = FIRMWARE_VERSION;
+				params_report.board_id = BOARD_ID;
+				params_report.reserved_layout = 0;
+				memcpy(params_report.axis_data, joy_report.axis_data,
+				       sizeof(params_report.axis_data));
+
+				if (report == 0) {
+					report_buf[1] = 0;
+					memcpy(&report_buf[2], (uint8_t *)&params_report, 62);
+				} else {
+					report_buf[1] = 1;
+					memcpy(&report_buf[2], (uint8_t *)&params_report + 62,
+					       sizeof(params_report_t) - 62);
+				}
+
+				if (Board_USB_SendReport(REPORT_ID_PARAM, report_buf, 64) == 0) {
+					report = !report;
+				}
+			}
+		}
+#else
 		Board_USB_SendReport(REPORT_ID_JOY, report_buf, pos);
 
 		/* Params report -- two halves chunked into 62-byte payloads
@@ -265,6 +406,7 @@ void Board_TickISR(void)
 				report = !report;
 			}
 		}
+#endif
 	}
 
 	/* UART telemetry (simhub) on its own cadence. */

@@ -59,17 +59,17 @@ volatile uint8_t bootloader = 0;
   * @retval None
   */
 int main(void)
-{	
+{
 	// Relocate vector table to the application's load address. Wrapped
 	// in the BSP so the F411 port can swap in its own offset (S5-relative
 	// rather than F103's 8-KB-bootloader-relative).
 	Board_RelocateVectorTable();
 
 	SysTick_Init();
-	
+
 	// getting configuration from flash memory
 	DevConfigGet(&dev_config);
-	
+
 	// set default config at first startup
 	if ((dev_config.firmware_version & 0xFFF0) != (FIRMWARE_VERSION &0xFFF0))
 	{
@@ -77,19 +77,19 @@ int main(void)
 		DevConfigGet(&dev_config);
 	}
 	AppConfigInit(&dev_config);
-	
+
 	Board_USB_Init();
 	// wait for USB initialization
 	Delay_ms(1000);
-	
+
 	IO_Init(&dev_config);
-	 
+
 	EncodersInit(&dev_config);	// add rgb timer check. what?
 	ShiftRegistersInit(&dev_config);
 	RadioButtons_Init(&dev_config);
 	SequentialButtons_Init(&dev_config);
 	Gestures_Init(&dev_config);
-	
+
 	// init sensors
 	AxesInit(&dev_config);
 	// start sequential periphery reading
