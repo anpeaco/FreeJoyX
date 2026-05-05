@@ -137,7 +137,15 @@ extern external_led_data_t external_led_data;
 void App_HidOutDispatch(const uint8_t *hid_buf)
 {
 	static dev_config_t tmp_dev_config;
-	uint8_t tmp_buf[64];
+	/* tmp_buf MUST be static (was stack-local). F411's OTG-FS in
+	 * non-DMA mode latches the buffer pointer in HAL_PCD_EP_Transmit
+	 * and reads from it later, when the TXFE IRQ fires to load the
+	 * FIFO. By then this function has returned and the stack frame's
+	 * been reused -- the late bytes of the IN report came from
+	 * whatever ran on the stack after we returned, not from the
+	 * memcpy we just did. Static storage gives the buffer permanent
+	 * lifetime so the deferred FIFO load reads our actual data. */
+	static uint8_t tmp_buf[64];
 	uint8_t config_in_cnt;
 	uint8_t config_out_cnt;
 	uint8_t reportId = hid_buf[0];
@@ -257,7 +265,14 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
  * (board_tick.c). */
 void Board_TickISR(void)
 {
-	uint8_t       report_buf[64];
+	/* report_buf MUST be static (was stack-local). F411's OTG-FS in
+	 * non-DMA mode reads from this buffer asynchronously when TXFE
+	 * IRQ fires to load the FIFO -- by which time Board_TickISR has
+	 * returned and the stack frame is gone. Static storage keeps the
+	 * data alive across the deferred FIFO load. Same fix as the one
+	 * in App_HidOutDispatch. Tick is single-instance (no reentrancy
+	 * for same-priority IRQ) so static is safe here. */
+	static uint8_t report_buf[64];
 	uint8_t       pos = 0;
 	app_config_t  tmp_app_config;
 

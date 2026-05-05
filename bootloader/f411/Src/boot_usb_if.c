@@ -170,7 +170,10 @@ static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
 	}
 
 	if (firmware_in_cnt > 0) {
-		uint8_t reply[3];
+		/* reply MUST be static. F411's OTG-FS in non-DMA mode reads
+		 * the buffer asynchronously when TXFE IRQ fires; stack memory
+		 * is dead by then. */
+		static uint8_t reply[3];
 		reply[0] = REPORT_ID_FLASH;
 		reply[1] = (uint8_t)(firmware_in_cnt >> 8);
 		reply[2] = (uint8_t)(firmware_in_cnt & 0xFF);
