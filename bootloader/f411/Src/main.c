@@ -50,10 +50,12 @@ extern void Board_ClockInit_F411(void);
 /* DFU magic word. Matches Board_EnterDfu in board_dfu.c. */
 #define BOOT_DFU_MAGIC     0x424CU
 
-/* F411CE has 128 KB SRAM at 0x20000000-0x2001FFFF. The mask catches
- * any pointer in that range (high 15 bits == 0x20000). */
+/* F411CE has 128 KB SRAM at 0x20000000-0x2001FFFF. _estack from the
+ * linker is one byte past the end (0x20020000) by Cortex-M convention,
+ * so the validity check must accept SRAM_BASE..SRAM_BASE+SRAM_SIZE
+ * inclusive, not a bitmask of the 128 KB range. */
 #define SRAM_BASE_F411     0x20000000U
-#define SRAM_MASK_F411     0xFFFE0000U
+#define SRAM_SIZE_F411     0x00020000U
 
 extern USBD_DescriptorsTypeDef     FreeJoy_Desc;       /* board/f411_blackpill/Src/usbd_freejoy_desc.c */
 extern USBD_CUSTOM_HID_ItfTypeDef  Boot_HID_fops;      /* bootloader/f411/Src/boot_usb_if.c */
@@ -127,7 +129,7 @@ static uint16_t Boot_GetMagicWord(void)
 static int Boot_AppValid(void)
 {
 	uint32_t sp = *(volatile uint32_t *)APP_VTOR_ADDR;
-	return ((sp & SRAM_MASK_F411) == SRAM_BASE_F411) ? 1 : 0;
+	return ((sp - SRAM_BASE_F411) <= SRAM_SIZE_F411) ? 1 : 0;
 }
 
 /* Jump to the application. Set VTOR, switch the main stack pointer to
