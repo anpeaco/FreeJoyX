@@ -8,12 +8,11 @@
   * (0x08010000, 64 KB) -- see board_config.h. Sector erase + word program
   * are the only HAL ops needed; everything else is LL.
   *
-  * HAL_GetTick stub lives at the bottom of this file. The HAL flash polls
-  * busy via HAL_GetTick-driven timeouts; with the stub returning 0, the
-  * elapsed-tick check never trips, and the loop polls FLASH_SR_BSY until
-  * it clears (microseconds for valid ops). Acceptable for Phase 3 scope
-  * (acceptance criterion is a clean build); a real tick source lands in
-  * Phase 5 alongside TIM2 main tick wiring.
+  * HAL_GetTick is provided by the HAL (__weak) and incremented from
+  * SysTick_Handler in stm32f4xx_it.c via HAL_IncTick. The Phase 3 stub
+  * here that returned 0 was removed once SysTick was wired up: HAL_PCD_Init
+  * uses HAL_Delay() internally and a zero-returning tick made it spin
+  * forever, hanging Board_USB_Init on cold boot.
   ******************************************************************************
   */
 
@@ -63,13 +62,4 @@ void ConfigFlash_ErasePage(uint32_t page_addr)
 void ConfigFlash_WriteWord(uint32_t addr, uint32_t value)
 {
 	HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr, (uint64_t)value);
-}
-
-/* HAL_GetTick stub. The HAL FLASH driver only calls it from busy-wait
- * timeouts; returning 0 makes the elapsed-tick check never trip, so the
- * loop polls FLASH_SR_BSY indefinitely (which clears in microseconds for
- * valid ops). Phase 5 replaces this with the real tick once TIM2 is up. */
-uint32_t HAL_GetTick(void)
-{
-	return 0U;
 }
