@@ -35,7 +35,7 @@ extern void App_HidOutDispatch(const uint8_t *hid_buf);
  * (FreeJoyConfiguratorQtX/src/reportconverter.cpp). MAX_BUTTONS_NUM=128
  * and MAX_AXIS_NUM=8 from common_defines.h drive the joystick report
  * sizing. */
-__ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[USBD_CUSTOM_HID_REPORT_DESC_SIZE] __ALIGN_END = {
+__ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[] __ALIGN_END = {
 	/* === Joystick collection (REPORT_ID 1 = JOY) === */
 	0x05, 0x01,                     /* USAGE_PAGE (Generic Desktop) */
 	0x09, 0x04,                     /* USAGE (Joystick) */
@@ -108,6 +108,14 @@ __ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[USBD_CUSTOM_HID_REPORT_DESC_SIZE
 	0xC0,                           /* END_COLLECTION */
 };
 
+/* Pin USBD_CUSTOM_HID_REPORT_DESC_SIZE to the actual array size --
+ * any drift produces trailing-zero padding that Windows rejects with
+ * Code 10. If this fires, update USBD_CUSTOM_HID_REPORT_DESC_SIZE in
+ * board/f411_blackpill/Inc/usbd_conf.h to the value the compiler
+ * complains about. */
+_Static_assert(sizeof(FreeJoy_ReportDesc) == USBD_CUSTOM_HID_REPORT_DESC_SIZE,
+               "FreeJoy_ReportDesc size != USBD_CUSTOM_HID_REPORT_DESC_SIZE");
+
 /* Initialize anything class-specific. Called by USBD_CUSTOM_HID class
  * once per USBD_Init -> USBD_Start cycle. F103 used this to set the
  * initial protocol; on F411 the class core handles that, and the
@@ -126,10 +134,19 @@ static int8_t FreeJoy_HID_DeInit(void)
  * a 64-byte array; report_buffer[0] is the report ID, [1..62] is the
  * payload. Dispatch into the board-agnostic App_HidOutDispatch which
  * handles config receive, firmware-update trigger, and LED-state
- * updates by report ID. */
+ * updates by report ID.
+ *
+ * Critical: re-arm EP1 OUT for the next report. Cube's CustomHID class
+ * library naks all subsequent OUTs after the first if the user code
+ * doesn't call USBD_CUSTOM_HID_ReceivePacket from OutEvent. Without
+ * this, only the first PARAM ping ever reaches the device and every
+ * CONFIG_IN/CONFIG_OUT request silently fails.  */
+extern USBD_HandleTypeDef hUsbDeviceFS;  /* board/f411_blackpill/Src/board_usb.c */
+
 static int8_t FreeJoy_HID_OutEvent(uint8_t *report_buffer)
 {
 	App_HidOutDispatch(report_buffer);
+	USBD_CUSTOM_HID_ReceivePacket(&hUsbDeviceFS);
 	return USBD_OK;
 }
 

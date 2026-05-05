@@ -177,6 +177,12 @@ static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
 		USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, reply, 3);
 	}
 
+	/* Re-arm EP1 OUT so the next chunk can be received. Cube's
+	 * CustomHID class lib NAKs subsequent OUTs after the first
+	 * unless the user code calls this from OutEvent. Without it
+	 * only the first DFU chunk gets through. */
+	USBD_CUSTOM_HID_ReceivePacket(&hUsbDeviceFS);
+
 	return USBD_OK;
 }
 

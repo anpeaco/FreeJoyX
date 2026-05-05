@@ -36,16 +36,29 @@ extern "C" {
 #define USBD_SELF_POWERED                           0U     /* bus-powered */
 #define USBD_DEBUG_LEVEL                            0U     /* no printf */
 
-/* CustomHID Class Config -- mirrors application/Src/usb_desc.c report
- * descriptor sizing. The 7 report-IDs (JOY/PARAM/CONFIG_IN/CONFIG_OUT/
- * FIRMWARE/LED) plus the 64-byte payload + 1-byte ID header in
- * usb_desc.c::CustomHID_ReportDescriptor compute to 233 bytes. Round up
- * for safety; usbd_freejoy_desc.c reports the exact byte count back to
- * the host via Get_ReportDescriptor. */
+/* CustomHID Class Config. USBD_CUSTOM_HID_REPORT_DESC_SIZE must equal
+ * the EXACT byte count of FreeJoy_ReportDesc in usbd_freejoy_if.c --
+ * the class library reports it as wDescriptorLength to the host AND
+ * as the GET_REPORT_DESCRIPTOR response length. Any mismatch produces
+ * trailing zeros that Windows treats as malformed HID items, failing
+ * enumeration with Code 10. A _Static_assert in usbd_freejoy_if.c
+ * pins the size to sizeof(FreeJoy_ReportDesc); update both together
+ * if the descriptor changes.
+ *
+ * CUSTOM_HID_EPIN_SIZE and CUSTOM_HID_EPOUT_SIZE override the class
+ * library's defaults of 2 bytes -- those defaults are wMaxPacketSize
+ * baked into the config descriptor, and Cube's defaults are sized for
+ * tiny consumer-control devices, not 64-byte HID reports. With the
+ * default of 2, Windows fragmented our 64-byte IN reports into 32 ×
+ * 2-byte packets (slow but worked) and silently dropped most OUT
+ * reports (App_HidOutDispatch never fired for CONFIG_IN). 64 matches
+ * what we actually send/receive. */
 #define CUSTOM_HID_HS_BINTERVAL                     0x05U
 #define CUSTOM_HID_FS_BINTERVAL                     0x05U
+#define CUSTOM_HID_EPIN_SIZE                        0x40U  /* 64 -- one HID IN chunk */
+#define CUSTOM_HID_EPOUT_SIZE                       0x40U  /* 64 -- one HID OUT chunk */
 #define USBD_CUSTOMHID_OUTREPORT_BUF_SIZE           0x40U  /* 64 -- one HID OUT chunk */
-#define USBD_CUSTOM_HID_REPORT_DESC_SIZE            233U
+#define USBD_CUSTOM_HID_REPORT_DESC_SIZE            181U
 
 /* Pass the entire 64-byte HID OUT buffer to OutEvent so the dispatch
  * code can read the report ID from byte[0] and route to the matching
