@@ -66,8 +66,10 @@ MCU = $(TARGET_CPU) -mthumb $(TARGET_FPU) $(TARGET_FLOAT_ABI)
 # AS defines
 AS_DEFS =
 
-# C defines from target plus any bootloader-level overrides
-C_DEFS = $(TARGET_C_DEFS)
+# C defines from target plus any bootloader-level overrides.
+# BOOTLOADER lets shared sources (e.g. board/.../usbd_freejoy_desc.c)
+# omit application-only paths like reading dev_config from RAM.
+C_DEFS = $(TARGET_C_DEFS) -DBOOTLOADER
 
 # AS includes
 AS_INCLUDES =

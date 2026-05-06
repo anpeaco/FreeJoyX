@@ -23,6 +23,16 @@
 
 #include <string.h>
 
+#ifndef BOOTLOADER
+#include "common_types.h"
+
+/* Defined in application/Src/main.c. The bootloader build (-DBOOTLOADER
+ * in makefile.boot) skips this so it doesn't need application headers
+ * or the dev_config symbol -- the bootloader keeps the static product
+ * string. */
+extern dev_config_t dev_config;
+#endif
+
 #define USBD_VID                        0x0483
 #define USBD_PID                        0x5750
 #define USBD_LANGID_STRING              0x0409  /* U.S. English */
@@ -119,7 +129,26 @@ static uint8_t * USBD_FreeJoy_ManufacturerStrDescriptor(USBD_SpeedTypeDef speed,
 static uint8_t * USBD_FreeJoy_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
 	(void)speed;
+
+#ifndef BOOTLOADER
+	/* Mirror F103's Get_ProductStr (application/Src/usb_hw.c:238): pull
+	 * the configurator-set USB product name out of dev_config.device_name.
+	 * The field is 26 bytes, may or may not be NUL-terminated; copy through
+	 * a NUL-terminated scratch buffer so USBD_GetString's strlen is safe.
+	 * Fall back to the compiled-in default when the slot is empty (first
+	 * boot, factory-reset, or wire-format-driven blanking). */
+	static char product_name[27];
+	memcpy(product_name, dev_config.device_name, sizeof(dev_config.device_name));
+	product_name[sizeof(product_name) - 1] = '\0';
+
+	const uint8_t *src = (product_name[0] != '\0')
+		? (const uint8_t *)product_name
+		: (const uint8_t *)USBD_PRODUCT_FS_STRING;
+
+	USBD_GetString((uint8_t *)src, USBD_StrDesc, length);
+#else
 	USBD_GetString((uint8_t *)USBD_PRODUCT_FS_STRING, USBD_StrDesc, length);
+#endif
 	return USBD_StrDesc;
 }
 
