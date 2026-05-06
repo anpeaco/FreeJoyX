@@ -1,47 +1,61 @@
 /**
   ******************************************************************************
   * @file           : usbd_freejoy_if.c
-  * @brief          : F411 CustomHID interface (report descriptor + OutEvent dispatch).
+  * @brief          : F411 dual-HID composite report descriptors + OutEvent.
   *
-  * Provides the USBD_CUSTOM_HID_ItfTypeDef the CubeF4 USBD_CUSTOM_HID
-  * class calls during enumeration (pReport pointer + Init/DeInit) and
-  * on every HID OUT report (OutEvent with the 64-byte buffer).
+  * Phase 4F splits the single-interface CustomHID report descriptor that
+  * shipped with F411's Phase 4 into two report descriptors, matching
+  * F103's two-HID layout exactly (application/Src/usb_desc.c
+  * `JoystickHID_ReportDescriptor` and `CustomHID_ReportDescriptor`):
   *
-  * The report descriptor merges F103's separate JoystickHID + CustomHID
-  * report descriptors into a single Vendor-Defined collection holding
-  * all 7 report IDs (JOY=1, PARAM=2, CONFIG_IN=3, CONFIG_OUT=4,
-  * FIRMWARE=5, LED=6 -- matches application/Inc/common_defines.h
-  * REPORT_ID_* enum). Single-interface device avoids the F103 composite
-  * (Joystick HID + Custom HID + CDC) which is overkill for the
-  * configurator's wire-format protocol -- the host doesn't care which
-  * interface a report arrives on once it's parsed by report ID.
+  *   - Joystick HID  (REPORT_ID 1)         on interface 0, EP1 IN
+  *   - Configurator HID (REPORT_IDs 2..6)  on interface 1, EP2 IN/OUT
   *
-  * OutEvent dispatches by report ID (byte[0]) into the existing F103
-  * EP1_OUT_Callback handlers in application/Src/usb_endp.c. F411 calls
-  * those same functions; the report-routing logic stays board-agnostic.
+  * The composite class wrapper in `usbd_freejoy_class.c` owns the
+  * combined config descriptor + endpoint setup + Setup/DataIn/DataOut
+  * dispatch by interface number. This file contains only the per-
+  * interface report descriptors and the configurator's OutEvent shim
+  * into the board-agnostic application dispatch.
+  *
+  * Why dual-HID: Windows binds usbccgp.sys to composite devices
+  * (bNumInterfaces >= 2 with bDeviceClass = 0x00). usbccgp creates
+  * per-interface child device nodes whose friendly names refresh on
+  * every enumeration -- which is what we want when the user changes
+  * dev_config.device_name. The pre-Phase-4F single-interface layout
+  * skipped usbccgp, hitting the persistent iProduct cache and
+  * requiring the user to manually uninstall + replug to see the new
+  * name. F103 has been multi-interface from day one (Joystick HID +
+  * Configurator HID, since well before SimHub added CDC), which is
+  * why this class of bug never surfaced there.
   ******************************************************************************
   */
 
-#include "usbd_customhid.h"
+#include "usbd_freejoy_class.h"
 #include "common_defines.h"
 #include <stdint.h>
 
-/* Phase 4D: OutEvent now calls App_HidOutDispatch directly (in
- * application/Src/usb_app.c) instead of the indirect EP1_OUT_Callback +
- * out_buffer global the Phase 4 stubs used. */
+/* Phase 4D: OutEvent calls App_HidOutDispatch directly (in
+ * application/Src/usb_app.c) on the configurator interface. The joystick
+ * interface is IN-only (no OUT endpoint, no SET_REPORT path), so it has
+ * no OutEvent -- the report-descriptor below is a pure INPUT collection. */
 extern void App_HidOutDispatch(const uint8_t *hid_buf);
 
-/* HID report descriptor. Layout matches the configurator's parsing
- * (FreeJoyConfiguratorQtX/src/reportconverter.cpp). MAX_BUTTONS_NUM=128
- * and MAX_AXIS_NUM=8 from common_defines.h drive the joystick report
- * sizing. */
-__ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[] __ALIGN_END = {
-	/* === Joystick collection (REPORT_ID 1 = JOY) === */
+/*============================================================================
+ *  Joystick HID report descriptor (interface 0, REPORT_ID 1)
+ *
+ *  Verbatim port of F103 application/Src/usb_desc.c
+ *  JoystickHID_ReportDescriptor[]. Generic-Desktop / Joystick collection
+ *  with 128 buttons + 8 axes + 4 hats. MAX_BUTTONS_NUM=128 and
+ *  MAX_AXIS_NUM=8 from common_defines.h drive the report sizing.
+ *==========================================================================*/
+__ALIGN_BEGIN uint8_t FreeJoy_JoyReportDesc[FREEJOY_JOY_REPORT_DESC_SIZE] __ALIGN_END = {
 	0x05, 0x01,                     /* USAGE_PAGE (Generic Desktop) */
 	0x09, 0x04,                     /* USAGE (Joystick) */
 	0xA1, 0x01,                     /* COLLECTION (Application) */
 
 	0x85, REPORT_ID_JOY,            /*   REPORT_ID (1) */
+
+	/* buttons */
 	0x05, 0x09,                     /*   USAGE_PAGE (Button) */
 	0x19, 0x01,                     /*   USAGE_MINIMUM (Button 1) */
 	0x29, MAX_BUTTONS_NUM,          /*   USAGE_MAXIMUM (Button 128) */
@@ -51,6 +65,7 @@ __ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[] __ALIGN_END = {
 	0x95, MAX_BUTTONS_NUM,          /*   REPORT_COUNT (128) */
 	0x81, 0x00,                     /*   INPUT (Data,Ary,Abs) */
 
+	/* axes */
 	0x05, 0x01,                     /*   USAGE_PAGE (Generic Desktop) */
 	0x09, 0x30,                     /*   USAGE (X) */
 	0x09, 0x31,                     /*   USAGE (Y) */
@@ -66,6 +81,7 @@ __ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[] __ALIGN_END = {
 	0x95, MAX_AXIS_NUM,             /*   REPORT_COUNT (8) */
 	0x81, 0x02,                     /*   INPUT (Data,Var,Abs) */
 
+	/* POV / hats */
 	0x09, 0x39,                     /*   USAGE (Hat switch) */
 	0x15, 0x00,                     /*   LOGICAL_MINIMUM (0) */
 	0x25, 0x07,                     /*   LOGICAL_MAXIMUM (7) */
@@ -74,85 +90,76 @@ __ALIGN_BEGIN static uint8_t FreeJoy_ReportDesc[] __ALIGN_END = {
 	0x65, 0x12,                     /*   UNIT (SI Rot:Angular Pos) */
 	0x75, 0x08,                     /*   REPORT_SIZE (8) */
 	0x95, 0x01,                     /*   REPORT_COUNT (1) */
-	0x81, 0x02,                     /*   INPUT */
+	0x81, 0x02,                     /*   INPUT (Data,Var,Abs) */
 	0x09, 0x39, 0x81, 0x02,         /*   USAGE (Hat switch) + INPUT */
 	0x09, 0x39, 0x81, 0x02,
 	0x09, 0x39, 0x81, 0x02,
 
-	/* === Vendor-defined configurator reports (PARAM/CONFIG_IN/OUT/FIRMWARE/LED) === */
-	0x06, 0x00, 0xFF,               /*   USAGE_PAGE (Vendor Defined 1) */
+	0xC0,                           /* END_COLLECTION */
+};
 
+_Static_assert(sizeof(FreeJoy_JoyReportDesc) == FREEJOY_JOY_REPORT_DESC_SIZE,
+               "FreeJoy_JoyReportDesc size != FREEJOY_JOY_REPORT_DESC_SIZE — "
+               "update FREEJOY_JOY_REPORT_DESC_SIZE in usbd_conf.h");
+
+/*============================================================================
+ *  Configurator HID report descriptor (interface 1, REPORT_IDs 2..6)
+ *
+ *  Verbatim port of F103 application/Src/usb_desc.c
+ *  CustomHID_ReportDescriptor[]. Vendor-Defined collection with 5
+ *  REPORT_IDs: PARAM (2), CONFIG_IN (3), CONFIG_OUT (4), FIRMWARE (5),
+ *  LED (6). Each REPORT_ID has its own INPUT and (optionally) OUTPUT
+ *  fields sized for the configurator's wire-format protocol.
+ *==========================================================================*/
+__ALIGN_BEGIN uint8_t FreeJoy_CfgReportDesc[FREEJOY_CFG_REPORT_DESC_SIZE] __ALIGN_END = {
+	0x06, 0x00, 0xFF,               /* USAGE_PAGE (Vendor Defined 1) */
+	0x09, 0x01,                     /* USAGE (Vendor Usage 1) */
+	0xA1, 0x01,                     /* COLLECTION (Application) */
+
+	/* REPORT_ID 2 (PARAM): IN 63 bytes, OUT 1 byte */
 	0x85, REPORT_ID_PARAM,          /*   REPORT_ID (2) */
+	0x06, 0x00, 0xFF,               /*   USAGE_PAGE (Vendor Defined 1) */
 	0x09, 0x02,                     /*   USAGE (Vendor 2) */
 	0x15, 0x00, 0x26, 0xFF, 0x00,   /*   LOGICAL_MIN/MAX 0..255 */
 	0x75, 0x08, 0x95, 0x3F,         /*   REPORT_SIZE 8 / COUNT 63 */
 	0x81, 0x00,                     /*   INPUT */
-	0x09, 0x03, 0x75, 0x08, 0x95, 0x01, 0x91, 0x00, /*   OUTPUT 1 byte */
+	0x09, 0x03, 0x75, 0x08, 0x95, 0x01, 0x91, 0x00,
 
+	/* REPORT_ID 3 (CONFIG_IN): IN 63 bytes, OUT 1 byte */
 	0x85, REPORT_ID_CONFIG_IN,      /*   REPORT_ID (3) */
+	0x06, 0x00, 0xFF,               /*   USAGE_PAGE (Vendor Defined 1) */
 	0x09, 0x04, 0x15, 0x00, 0x26, 0xFF, 0x00,
 	0x75, 0x08, 0x95, 0x3F, 0x81, 0x00,
 	0x09, 0x05, 0x75, 0x08, 0x95, 0x01, 0x91, 0x00,
 
+	/* REPORT_ID 4 (CONFIG_OUT): IN 1 byte, OUT 63 bytes */
 	0x85, REPORT_ID_CONFIG_OUT,     /*   REPORT_ID (4) */
 	0x09, 0x06, 0x75, 0x08, 0x95, 0x01, 0x81, 0x00,
 	0x09, 0x07, 0x75, 0x08, 0x95, 0x3F, 0x91, 0x00,
 
+	/* REPORT_ID 5 (FIRMWARE): IN 2 bytes, OUT 63 bytes */
 	0x85, REPORT_ID_FIRMWARE,       /*   REPORT_ID (5) */
 	0x09, 0x08, 0x75, 0x08, 0x95, 0x02, 0x81, 0x00,
 	0x09, 0x09, 0x75, 0x08, 0x95, 0x3F, 0x91, 0x00,
 
+	/* REPORT_ID 6 (LED): OUT 4 bytes (no IN) */
 	0x85, REPORT_ID_LED,            /*   REPORT_ID (6) */
 	0x09, 0x0A, 0x75, 0x08, 0x95, 0x04, 0x91, 0x00,
 
 	0xC0,                           /* END_COLLECTION */
 };
 
-/* Pin USBD_CUSTOM_HID_REPORT_DESC_SIZE to the actual array size --
- * any drift produces trailing-zero padding that Windows rejects with
- * Code 10. If this fires, update USBD_CUSTOM_HID_REPORT_DESC_SIZE in
- * board/f411_blackpill/Inc/usbd_conf.h to the value the compiler
- * complains about. */
-_Static_assert(sizeof(FreeJoy_ReportDesc) == USBD_CUSTOM_HID_REPORT_DESC_SIZE,
-               "FreeJoy_ReportDesc size != USBD_CUSTOM_HID_REPORT_DESC_SIZE");
+_Static_assert(sizeof(FreeJoy_CfgReportDesc) == FREEJOY_CFG_REPORT_DESC_SIZE,
+               "FreeJoy_CfgReportDesc size != FREEJOY_CFG_REPORT_DESC_SIZE — "
+               "update FREEJOY_CFG_REPORT_DESC_SIZE in usbd_conf.h");
 
-/* Initialize anything class-specific. Called by USBD_CUSTOM_HID class
- * once per USBD_Init -> USBD_Start cycle. F103 used this to set the
- * initial protocol; on F411 the class core handles that, and the
- * dispatch into application code happens later via EP1_OUT_Callback. */
-static int8_t FreeJoy_HID_Init(void)
-{
-	return USBD_OK;
-}
-
-static int8_t FreeJoy_HID_DeInit(void)
-{
-	return USBD_OK;
-}
-
-/* Called when host sends a HID OUT report on EP1 OUT. report_buffer is
- * a 64-byte array; report_buffer[0] is the report ID, [1..62] is the
- * payload. Dispatch into the board-agnostic App_HidOutDispatch which
- * handles config receive, firmware-update trigger, and LED-state
- * updates by report ID.
- *
- * Critical: re-arm EP1 OUT for the next report. Cube's CustomHID class
- * library naks all subsequent OUTs after the first if the user code
- * doesn't call USBD_CUSTOM_HID_ReceivePacket from OutEvent. Without
- * this, only the first PARAM ping ever reaches the device and every
- * CONFIG_IN/CONFIG_OUT request silently fails.  */
-extern USBD_HandleTypeDef hUsbDeviceFS;  /* board/f411_blackpill/Src/board_usb.c */
-
-static int8_t FreeJoy_HID_OutEvent(uint8_t *report_buffer)
+/*============================================================================
+ *  Configurator-interface OutEvent: called by the composite class when
+ *  a HID OUT report arrives on EP2 OUT. Routes to the board-agnostic
+ *  App_HidOutDispatch which handles config receive, firmware-update
+ *  trigger, and LED-state updates by report ID byte.
+ *==========================================================================*/
+void FreeJoy_CfgOutEvent(uint8_t *report_buffer)
 {
 	App_HidOutDispatch(report_buffer);
-	USBD_CUSTOM_HID_ReceivePacket(&hUsbDeviceFS);
-	return USBD_OK;
 }
-
-USBD_CUSTOM_HID_ItfTypeDef FreeJoy_HID_fops = {
-	FreeJoy_ReportDesc,
-	FreeJoy_HID_Init,
-	FreeJoy_HID_DeInit,
-	FreeJoy_HID_OutEvent,
-};

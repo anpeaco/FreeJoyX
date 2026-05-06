@@ -3,11 +3,16 @@
   * @file           : board_usb.c
   * @brief          : F411 BlackPill board_usb.h implementation.
   *
-  * Drives the Cube USBD middleware: USBD_Init, USBD_RegisterClass with
-  * USBD_CUSTOM_HID_CLASS, USBD_CUSTOM_HID_RegisterInterface with the
-  * FreeJoy_HID_fops descriptor pointer + OutEvent dispatch (defined
-  * in usbd_freejoy_if.c), USBD_Start. Send-report routes through
-  * USBD_CUSTOM_HID_SendReport which queues an IN transfer on EP1.
+  * Drives the Cube USBD middleware. Phase 4F switched the app from the
+  * stock single-CustomHID class to a custom dual-HID composite class
+  * (`USBD_FreeJoy_CompositeClass` from `usbd_freejoy_class.c`), so
+  * Windows binds usbccgp.sys to the device and per-interface friendly
+  * names refresh on every enumeration. Send-report routes by REPORT_ID:
+  * REPORT_ID_JOY (1) goes to EP1 IN, REPORT_IDs 2..6 go to EP2 IN.
+  *
+  * The bootloader keeps the stock Cube CustomHID single-interface
+  * layout (separate makefile, `-DBOOTLOADER` flag, separate descriptor
+  * source).
   ******************************************************************************
   */
 
@@ -15,18 +20,17 @@
 #include "stm32f4xx_ll_utils.h"
 
 #include "usbd_core.h"
-#include "usbd_customhid.h"
+#include "usbd_freejoy_class.h"
+#include "common_defines.h"
 
-extern USBD_DescriptorsTypeDef       FreeJoy_Desc;       /* usbd_freejoy_desc.c */
-extern USBD_CUSTOM_HID_ItfTypeDef    FreeJoy_HID_fops;   /* usbd_freejoy_if.c */
+extern USBD_DescriptorsTypeDef FreeJoy_Desc;     /* usbd_freejoy_desc.c */
 
 USBD_HandleTypeDef hUsbDeviceFS;
 
 void Board_USB_Init(void)
 {
 	USBD_Init(&hUsbDeviceFS, &FreeJoy_Desc, 0);
-	USBD_RegisterClass(&hUsbDeviceFS, USBD_CUSTOM_HID_CLASS);
-	USBD_CUSTOM_HID_RegisterInterface(&hUsbDeviceFS, &FreeJoy_HID_fops);
+	USBD_RegisterClass(&hUsbDeviceFS, &USBD_FreeJoy_CompositeClass);
 	USBD_Start(&hUsbDeviceFS);
 }
 
@@ -38,18 +42,23 @@ void Board_USB_DeInit(void)
 
 int8_t Board_USB_SendReport(uint8_t report_id, uint8_t *data, uint8_t length)
 {
-	(void)report_id;	/* F411 uses a single CustomHID class instance with
-	                     all 7 report IDs in one collection -- the report_id
-	                     is already in data[0] per the HID convention. */
-
 	if (hUsbDeviceFS.dev_state != USBD_STATE_CONFIGURED) {
 		return -1;
 	}
 
-	/* USBD_CUSTOM_HID_SendReport returns USBD_OK (0) when the IN
-	 * transfer was queued, USBD_BUSY (1) when the previous IN report
-	 * is still in flight. Convert to the F103 0/-1 convention. */
-	uint8_t rc = USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, data, length);
+	/* Route by report ID. Joystick (REPORT_ID 1) goes out on the
+	 * joystick HID interface (EP1 IN); everything else (PARAM,
+	 * CONFIG_IN, FIRMWARE, LED) goes on the configurator HID
+	 * interface (EP2 IN). The two endpoints are independent, so
+	 * joystick reports no longer contend with configurator traffic
+	 * the way they did with single-interface (see usb_app.c
+	 * Phase-4F follow-up that drops the alternation hack). */
+	uint8_t rc;
+	if (report_id == REPORT_ID_JOY) {
+		rc = USBD_FreeJoy_SendJoyReport(&hUsbDeviceFS, data, length);
+	} else {
+		rc = USBD_FreeJoy_SendCfgReport(&hUsbDeviceFS, data, length);
+	}
 	return (rc == USBD_OK) ? 0 : -1;
 }
 

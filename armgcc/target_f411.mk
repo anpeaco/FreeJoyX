@@ -70,6 +70,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_phase_stubs.c \
 ../board/f411_blackpill/Src/usbd_freejoy_desc.c \
 ../board/f411_blackpill/Src/usbd_freejoy_if.c \
+../board/f411_blackpill/Src/usbd_freejoy_class.c \
 ../board/f411_blackpill/Src/usbd_conf.c \
 ../board/f411_blackpill/Src/board_usb.c \
 ../board/f411_blackpill/Src/stm32f4xx_it.c \

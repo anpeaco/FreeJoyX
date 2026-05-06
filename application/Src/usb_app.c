@@ -353,52 +353,22 @@ void Board_TickISR(void)
 			}
 		}
 
-#ifdef BOARD_F411_BLACKPILL
-		/* F411 single-interface: joy + params share EP1 IN, so queueing
-		 * joy first leaves params with USBD_BUSY forever. Alternate per
-		 * tick instead -- send joy on even ticks, params on odd ticks
-		 * during configurator sessions. The configurator only needs
-		 * params at a few Hz to populate the device-info card; a 1 kHz
-		 * joy + 1 kHz params split is plenty. (F103 uses two separate
-		 * endpoints on its multi-interface descriptor, so it doesn't
-		 * have this contention.)
+		/* Joystick on REPORT_ID_JOY, every qualifying tick.
 		 *
-		 * Diagnostic phase: force params unconditionally on F411 to
-		 * verify the device->host send path while we triage why
-		 * configurator_millis isn't getting set. */
-		{
-			static uint8_t alternation = 0;
-			alternation ^= 1;
-			if (alternation == 0) {
-				Board_USB_SendReport(REPORT_ID_JOY, report_buf, pos);
-			} else {
-				static uint8_t report = 0;
-				report_buf[0] = REPORT_ID_PARAM;
-				params_report.firmware_version = FIRMWARE_VERSION;
-				params_report.board_id = BOARD_ID;
-				params_report.reserved_layout = 0;
-				memcpy(params_report.axis_data, joy_report.axis_data,
-				       sizeof(params_report.axis_data));
-
-				if (report == 0) {
-					report_buf[1] = 0;
-					memcpy(&report_buf[2], (uint8_t *)&params_report, 62);
-				} else {
-					report_buf[1] = 1;
-					memcpy(&report_buf[2], (uint8_t *)&params_report + 62,
-					       sizeof(params_report_t) - 62);
-				}
-
-				if (Board_USB_SendReport(REPORT_ID_PARAM, report_buf, 64) == 0) {
-					report = !report;
-				}
-			}
-		}
-#else
+		 * F103 sends to its dedicated joystick HID interface (EP1 IN of
+		 * the multi-interface composite). F411 with Phase 4F is now
+		 * also dual-HID composite: joystick to EP1 IN, configurator
+		 * (params/config_in/config_out/firmware/led) to EP2 IN/OUT --
+		 * see board/f411_blackpill/Src/usbd_freejoy_class.c. Joy and
+		 * params no longer share an endpoint, so the F411-specific
+		 * per-tick alternation that pre-Phase-4F shipped is no longer
+		 * needed; both boards run the same path here. */
 		Board_USB_SendReport(REPORT_ID_JOY, report_buf, pos);
 
 		/* Params report -- two halves chunked into 62-byte payloads
-		 * because params_report_t is larger than one HID report. */
+		 * because params_report_t is larger than one HID report. Only
+		 * sent during active configurator sessions (configurator pings
+		 * extend configurator_millis by 30 s in App_HidOutDispatch). */
 		if (configurator_millis > millis) {
 			static uint8_t report = 0;
 			report_buf[0] = REPORT_ID_PARAM;
@@ -421,7 +391,6 @@ void Board_TickISR(void)
 				report = !report;
 			}
 		}
-#endif
 	}
 
 	/* UART telemetry (simhub) on its own cadence. */

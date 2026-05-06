@@ -32,7 +32,11 @@
 #include "stm32f4xx_hal.h"
 #include "usbd_core.h"
 #include "usbd_conf.h"
-#include "usbd_customhid.h"   /* USBD_CUSTOM_HID_HandleTypeDef sizing */
+#include "usbd_customhid.h"   /* USBD_CUSTOM_HID_HandleTypeDef sizing (bootloader) */
+
+#ifndef BOOTLOADER
+#include "usbd_freejoy_class.h"  /* USBD_FreeJoy_HandleTypeDef sizing (app) */
+#endif
 
 PCD_HandleTypeDef hpcd;
 
@@ -158,16 +162,31 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
 
 	HAL_PCD_Init(&hpcd);
 
-	/* Endpoint FIFO sizing for OTG-FS (1.25 KB total, 16-bit words):
-	 *   RX shared FIFO   128 words = 512 bytes (handles all OUT)
-	 *   EP0 IN FIFO       64 words = 256 bytes (control responses)
-	 *   EP1 IN FIFO      128 words = 512 bytes (HID IN reports up to 64 B,
-	 *                                            with margin for back-to-back
-	 *                                            transmits before the host
-	 *                                            ACKs the previous one) */
+	/* Endpoint FIFO sizing for OTG-FS (1.25 KB / 320 32-bit words total).
+	 *
+	 * Bootloader (single CustomHID, EP1 IN/OUT only):
+	 *   RX shared FIFO  128 words = 512 bytes (all OUT incl. SETUP)
+	 *   EP0 IN FIFO      64 words = 256 bytes
+	 *   EP1 IN FIFO     128 words = 512 bytes (margin for back-to-back IN)
+	 *   total           320 words = 1280 bytes (full budget)
+	 *
+	 * Application (Phase 4F dual-HID composite, EP1 IN + EP2 IN/OUT):
+	 *   RX shared FIFO  128 words = 512 bytes (handles EP2 OUT + SETUP)
+	 *   EP0 IN FIFO      64 words = 256 bytes
+	 *   EP1 IN FIFO      64 words = 256 bytes (one 64-byte joystick
+	 *                                          report = 16 words; 64 words
+	 *                                          gives 4-deep margin)
+	 *   EP2 IN FIFO      64 words = 256 bytes (same depth as EP1 IN)
+	 *   total           320 words = 1280 bytes (full budget — no slack)
+	 */
 	HAL_PCDEx_SetRxFiFo(&hpcd, 0x80);
 	HAL_PCDEx_SetTxFiFo(&hpcd, 0, 0x40);
+#ifdef BOOTLOADER
 	HAL_PCDEx_SetTxFiFo(&hpcd, 1, 0x80);
+#else
+	HAL_PCDEx_SetTxFiFo(&hpcd, 1, 0x40);
+	HAL_PCDEx_SetTxFiFo(&hpcd, 2, 0x40);
+#endif
 
 	return USBD_OK;
 }
@@ -265,10 +284,16 @@ void USBD_LL_Delay(uint32_t Delay)
  *                       Static memory pool for USBD core
  *==========================================================================*/
 /* USBD core asks for one block per active class instance via USBD_malloc.
- * For our single-class (CustomHID), one slot is enough. Sized to fit
- * USBD_CUSTOM_HID_HandleTypeDef plus generous slack for any internal
- * Cube growth. */
+ * Pool sized to fit the larger of the two possible class handles:
+ *   - Bootloader: USBD_CUSTOM_HID_HandleTypeDef (stock Cube class)
+ *   - Application: USBD_FreeJoy_HandleTypeDef (Phase 4F dual-HID composite)
+ * Each binary picks one, so the pool only needs to fit that one in
+ * practice; sizing for the larger keeps usbd_conf.c board-build-agnostic. */
+#ifdef BOOTLOADER
 #define USBD_STATIC_POOL_SIZE   sizeof(USBD_CUSTOM_HID_HandleTypeDef)
+#else
+#define USBD_STATIC_POOL_SIZE   sizeof(USBD_FreeJoy_HandleTypeDef)
+#endif
 static uint8_t USBD_StaticPool[USBD_STATIC_POOL_SIZE] __attribute__((aligned(4)));
 static uint8_t USBD_StaticInUse;
 
