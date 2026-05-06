@@ -1,5 +1,10 @@
 # FreeJoyX
 
+**STILL IN INITIAL DEVELOPMENT STAGES**
+
+*Repo is up for feedback and suggestions, I'll update this when it's ready to try.*
+
+
 <img src="https://github.com/FreeJoy-Team/FreeJoy/blob/master/images/main.png">
 
 FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a widely configurable USB HID game-device firmware. It allows you to build your own HOTAS, pedals, steering wheel, sim-racing button box, etc., or customize a purchased one. FreeJoyX extends upstream FreeJoy with a second hardware-quadrature encoder, boolean-logic virtual buttons, long-press and double-tap gesture button types, and a port to the STM32F411 BlackPill alongside the original BluePill.
