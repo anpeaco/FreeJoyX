@@ -12,6 +12,15 @@
 //#define DEBUG
 
 #define FIRMWARE_VERSION					0x1770			// v1.7.7 (FreeJoyX Phase 7: dev_config_t gains uint8_t board_id + uint8_t reserved_layout immediately after firmware_version; params_report_t gains the same. Lets the configurator dispatch per-board pin tables and reject cross-board writes. 0x1770 crosses the &0xFFF0 mask boundary so the version-mismatch check at main.c:67 fires once on first flash and factory-resets across the layout change.)
+
+/* Wire-format size pins. Must move in lockstep with FIRMWARE_VERSION on
+ * any change to dev_config_t / params_report_t. The static_assert lines
+ * at the bottom of common_types.h fail the build if the struct shape
+ * drifts without bumping these. Sister rule lives in CLAUDE.md
+ * ("Wire-format archival rule"). */
+#define FREEJOY_DEV_CONFIG_SIZE				1450
+#define FREEJOY_PARAMS_REPORT_SIZE			70
+
 #define USED_PINS_NUM							30					// constant for BluePill and BlackPill boards
 
 /* Board identity tags. Stored in dev_config_t.board_id (persisted in
