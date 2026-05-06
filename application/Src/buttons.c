@@ -1053,11 +1053,11 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 		uint8_t shift_num = 0;
 		
 		// check logical buttons to have shift modificators							// disable if no shift?
-		if (p_dev_config->shift_config[0].button >=0 ||										// or shift_config[*].button ?
-				p_dev_config->shift_config[1].button >=0 ||
-				p_dev_config->shift_config[2].button >=0 ||
-				p_dev_config->shift_config[3].button >=0 ||
-				p_dev_config->shift_config[4].button >=0)	
+		uint8_t any_shift_configured = 0;
+		for (uint8_t s = 0; s < MAX_SHIFTS_NUM; s++) {
+			if (p_dev_config->shift_config[s].button >= 0) { any_shift_configured = 1; break; }
+		}
+		if (any_shift_configured)
 		{
 			for (uint8_t j=0; j<MAX_BUTTONS_NUM; j++)
 			{
@@ -1103,101 +1103,45 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 		}		
 		else	// check if shift is released for modificated physical button
 		{
+			/* For unmodified logical buttons (shift_modificator == 0): if no
+			 * shift is currently active, mirror the physical state through.
+			 * If any shift is active, suppress -- and clear residual state if
+			 * the button was on. Issue anpeaco/FreeJoyX#1 collapsed the prior
+			 * 5-way unrolled if/else cascade (one branch per shift bit) into
+			 * this single check; each branch was identical bookkeeping. The
+			 * cascade was also off-by-shift-count, since extending the array
+			 * past 5 left bits 5..7 silently un-handled. */
 			for (uint8_t j=0; j<MAX_BUTTONS_NUM; j++)
 			{
-				if (p_dev_config->buttons[j].physical_num == i && (shifts_state) == 0 &&
-					(p_dev_config->buttons[j].shift_modificator) == 0)
+				if (p_dev_config->buttons[j].physical_num != i ||
+				    p_dev_config->buttons[j].shift_modificator != 0)
+					continue;
+
+				if (shifts_state == 0)
 				{
 					logical_buttons_state[j].prev_physical_state = logical_buttons_state[j].curr_physical_state;
 					logical_buttons_state[j].curr_physical_state = physical_buttons_state[p_dev_config->buttons[j].physical_num].current_state;
-					
 					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
 				}
-				// shift pressed
-				else if (p_dev_config->buttons[j].physical_num == i && shifts_state & (1<<0) &&
-					(p_dev_config->buttons[j].shift_modificator) == 0)
+				else if (logical_buttons_state[j].current_state)
 				{
-					// disable button
-					if (logical_buttons_state[j].current_state)	
-					{
-						logical_buttons_state[j].delay_act = BUTTON_ACTION_IDLE;
-						logical_buttons_state[j].on_state = 0;
-						logical_buttons_state[j].off_state = 0;
-						logical_buttons_state[j].current_state = 0;
-						logical_buttons_state[j].curr_physical_state = 0;
-						logical_buttons_state[j].time_last = 0;
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
-					}	
-				}
-				else if (p_dev_config->buttons[j].physical_num == i && shifts_state & (1<<1)	&&
-					(p_dev_config->buttons[j].shift_modificator) == 0)
-				{
-					// disable button
-					if (logical_buttons_state[j].current_state)	
-					{
-						logical_buttons_state[j].delay_act = BUTTON_ACTION_IDLE;
-						logical_buttons_state[j].on_state = 0;
-						logical_buttons_state[j].off_state = 0;
-						logical_buttons_state[j].current_state = 0;	
-						logical_buttons_state[j].curr_physical_state = 0;
-						logical_buttons_state[j].time_last = 0;						
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
-					}		
-				}
-				else if (p_dev_config->buttons[j].physical_num == i && shifts_state & (1<<2) &&
-					(p_dev_config->buttons[j].shift_modificator) == 0)
-				{
-					// disable button
-					if (logical_buttons_state[j].current_state)	
-					{
-						logical_buttons_state[j].delay_act = BUTTON_ACTION_IDLE;
-						logical_buttons_state[j].on_state = 0;
-						logical_buttons_state[j].off_state = 0;
-						logical_buttons_state[j].current_state = 0;	
-						logical_buttons_state[j].curr_physical_state = 0;						
-						logical_buttons_state[j].time_last = 0;						
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
-					}	
-				}
-				else if (p_dev_config->buttons[j].physical_num == i && shifts_state & (1<<3) &&
-					(p_dev_config->buttons[j].shift_modificator) == 0)
-				{
-					// disable button
-					if (logical_buttons_state[j].current_state)	
-					{
-						logical_buttons_state[j].delay_act = BUTTON_ACTION_IDLE;
-						logical_buttons_state[j].on_state = 0;
-						logical_buttons_state[j].off_state = 0;
-						logical_buttons_state[j].current_state = 0;
-						logical_buttons_state[j].curr_physical_state = 0;
-						logical_buttons_state[j].time_last = 0;									
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
-					}		
-				}
-				else if (p_dev_config->buttons[j].physical_num == i && shifts_state & (1<<4) &&
-					(p_dev_config->buttons[j].shift_modificator) == 0)
-				{
-					// disable button
-					if (logical_buttons_state[j].current_state)	
-					{
-						logical_buttons_state[j].delay_act = BUTTON_ACTION_IDLE;
-						logical_buttons_state[j].on_state = 0;
-						logical_buttons_state[j].off_state = 0;
-						logical_buttons_state[j].current_state = 0;
-						logical_buttons_state[j].curr_physical_state = 0;
-						logical_buttons_state[j].time_last = 0;									
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
-					}	
+					logical_buttons_state[j].delay_act = BUTTON_ACTION_IDLE;
+					logical_buttons_state[j].on_state = 0;
+					logical_buttons_state[j].off_state = 0;
+					logical_buttons_state[j].current_state = 0;
+					logical_buttons_state[j].curr_physical_state = 0;
+					logical_buttons_state[j].time_last = 0;
+					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
 				}
 			}
 		}
 	}	
 	
 	shifts_state = 0;
-	for (uint8_t i=0; i<5; i++)
+	for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
 	{
 		if (p_dev_config->shift_config[i].button >= 0)
-		{				
+		{
 			shifts_state |= (logical_buttons_state[p_dev_config->shift_config[i].button].current_state << i);
 		}
 	}

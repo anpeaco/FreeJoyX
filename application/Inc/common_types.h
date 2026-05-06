@@ -285,11 +285,17 @@ typedef struct button_t
 	// src_b: Source B for type == LOGIC && op is binary; -1 / unused otherwise.
 	int8_t					src_b;
 
-	uint8_t					shift_modificator : 3;
+	// shift_modificator widened from :3 to :4 in v1.7.8 (issue
+	// anpeaco/FreeJoyX#1) to encode shift indices 0..8 (0=none, 1..8 =
+	// shift_config[0..7]). Crosses the 8-bit storage-unit boundary -- gcc
+	// will allocate a second uint8_t for this group, so button_t grows
+	// 1 byte per slot.
+	uint8_t					shift_modificator : 4;
 	uint8_t					is_inverted :1;
 	uint8_t					is_disabled :1;
 	// op: logic_op_t for type == LOGIC; 3 bits = up to 8 operators (MVP
-	// uses 7). Unused for non-LOGIC types.
+	// uses 7). Unused for non-LOGIC types. Spills into the new second
+	// storage unit alongside shift_modificator's widened bit.
 	uint8_t					op :3;
 
 	button_timer_t	delay_timer :3;	// also serves as the debounce-timer picker when type == LOGIC
@@ -532,7 +538,7 @@ typedef struct
 	
 	// config 14	
 	shift_reg_config_t	shift_registers[4];
-	shift_modificator_t	shift_config[5];
+	shift_modificator_t	shift_config[MAX_SHIFTS_NUM];
 	uint16_t						vid;
 	uint16_t						pid;
 	

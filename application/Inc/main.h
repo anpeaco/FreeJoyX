@@ -828,11 +828,20 @@ static const dev_config_t init_config =
 	.axes_to_buttons[7].buttons_cnt = 0,
 	
 	
+	/* shift_config[].button = -1 means "no shift wired to this slot".
+	 * Slot count must equal MAX_SHIFTS_NUM (currently 8). Designated
+	 * initialisers default unmentioned slots to .button = 0 (a valid
+	 * button index), which would silently bind shift_config[N].button
+	 * to physical button 0 -- shift constantly held. Enumerate all 8.
+	 * Issue anpeaco/FreeJoyX#1. */
 	.shift_config[0].button = -1,
 	.shift_config[1].button = -1,
 	.shift_config[2].button = -1,
 	.shift_config[3].button = -1,
 	.shift_config[4].button = -1,
+	.shift_config[5].button = -1,
+	.shift_config[6].button = -1,
+	.shift_config[7].button = -1,
 	
 	.encoders[0] = ENCODER_CONF_2x,
 	.encoders[1] = ENCODER_CONF_2x,

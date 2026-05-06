@@ -11,15 +11,21 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x1770			// v1.7.7 (FreeJoyX Phase 7: dev_config_t gains uint8_t board_id + uint8_t reserved_layout immediately after firmware_version; params_report_t gains the same. Lets the configurator dispatch per-board pin tables and reject cross-board writes. 0x1770 crosses the &0xFFF0 mask boundary so the version-mismatch check at main.c:67 fires once on first flash and factory-resets across the layout change.)
+#define FIRMWARE_VERSION					0x1780			// v1.7.8 (issue anpeaco/FreeJoyX#1: shift modifiers expanded from 5 to 8. shift_config[8] replaces shift_config[5] in dev_config_t, and button_t.shift_modificator widens from :3 to :4 so values 1..8 fit. The :3->:4 widen overflows the prior 8-bit bitfield byte into a second storage unit, growing each button_t by 1 byte (128 buttons * 1 byte = 128B), plus shift_config grows +3 bytes; total dev_config_t growth +131 bytes. 0x1780 crosses the &0xFFF0 mask boundary so the version-mismatch check at main.c:67 fires once on first flash and factory-resets across the layout change.)
 
 /* Wire-format size pins. Must move in lockstep with FIRMWARE_VERSION on
  * any change to dev_config_t / params_report_t. The static_assert lines
  * at the bottom of common_types.h fail the build if the struct shape
  * drifts without bumping these. Sister rule lives in CLAUDE.md
  * ("Wire-format archival rule"). */
-#define FREEJOY_DEV_CONFIG_SIZE				1450
+#define FREEJOY_DEV_CONFIG_SIZE				1580
 #define FREEJOY_PARAMS_REPORT_SIZE			70
+
+/* Maximum number of shift modifiers. v1.7.8: bumped 5 -> 8 to match
+ * button_t.shift_modificator's widened :4 field (encodes 0=none, 1..8).
+ * shift_config[i] uses bit i in the runtime shifts_state bitmap, so 8
+ * slots fits in the existing uint8_t. Issue anpeaco/FreeJoyX#1. */
+#define MAX_SHIFTS_NUM						8
 
 #define USED_PINS_NUM							30					// constant for BluePill and BlackPill boards
 
