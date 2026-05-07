@@ -22,8 +22,7 @@
   *                 -> CRC16 over received image, set flash_finished=1
   *                 -> reply [4, 0xF0, 0x00] OK / 0xF002 CRC err / etc.
   *
-  * Status codes: 0xF000=OK, 0xF001=size err, 0xF002=CRC err, 0xF003=erase err,
- *               0xF004=program err.
+  * Status codes: 0xF000=OK, 0xF001=size err, 0xF002=CRC err, 0xF003=erase err.
   ******************************************************************************
   */
 
@@ -122,27 +121,15 @@ static int Boot_EraseApp(void)
 /* Program 60 bytes (CHUNK_BYTES) at addr halfword-by-halfword. Matches
  * the F103 bootloader's pattern -- the chunk size isn't word-aligned so
  * halfword keeps the loop trivial. F411 supports halfword program at
- * VOLTAGE_RANGE_3 (RM0383 sec 3.6). Returns 0 on success, -1 if any
- * halfword program reported failure (issue anpeaco/FreeJoyX#3). The
- * loop aborts on the first failure -- continuing past a failed program
- * would write more halfwords into a partially-corrupted image, which
- * the post-image CRC check would catch eventually but at higher
- * blast-radius cost. */
-static int Boot_WriteChunk(uint32_t addr, const uint8_t *data60)
+ * VOLTAGE_RANGE_3 (RM0383 sec 3.6). */
+static void Boot_WriteChunk(uint32_t addr, const uint8_t *data60)
 {
-	int rc = 0;
 	HAL_FLASH_Unlock();
 	for (uint8_t i = 0; i < CHUNK_BYTES; i += 2) {
 		uint16_t hw = (uint16_t)data60[i] | ((uint16_t)data60[i + 1] << 8);
-		HAL_StatusTypeDef st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,
-		                                         addr + i, hw);
-		if (st != HAL_OK) {
-			rc = -1;
-			break;
-		}
+		HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, addr + i, hw);
 	}
 	HAL_FLASH_Lock();
-	return rc;
 }
 
 static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
@@ -172,27 +159,20 @@ static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
 	} else if (flash_started && firmware_len > 0 && (cnt * CHUNK_BYTES) < firmware_len) {
 		/* Body packet. */
 		uint32_t addr = APP_VTOR_ADDR + (uint32_t)(cnt - 1) * CHUNK_BYTES;
-		if (Boot_WriteChunk(addr, &report_buffer[4]) == 0) {
-			firmware_in_cnt = cnt + 1;
-		} else {
-			flash_started   = 0;
-			firmware_in_cnt = 0xF004;
-		}
+		Boot_WriteChunk(addr, &report_buffer[4]);
+		firmware_in_cnt = cnt + 1;
 	} else if (flash_started && firmware_len > 0) {
 		/* Last packet: same write, then verify CRC. */
 		uint32_t addr = APP_VTOR_ADDR + (uint32_t)(cnt - 1) * CHUNK_BYTES;
-		if (Boot_WriteChunk(addr, &report_buffer[4]) != 0) {
+		Boot_WriteChunk(addr, &report_buffer[4]);
+
+		uint16_t crc_comp = Crc16((uint8_t *)APP_VTOR_ADDR, firmware_len);
+		if (crc_in == crc_comp && crc_comp != 0) {
 			flash_started   = 0;
-			firmware_in_cnt = 0xF004;
+			flash_finished  = 1;
+			firmware_in_cnt = 0xF000;
 		} else {
-			uint16_t crc_comp = Crc16((uint8_t *)APP_VTOR_ADDR, firmware_len);
-			if (crc_in == crc_comp && crc_comp != 0) {
-				flash_started   = 0;
-				flash_finished  = 1;
-				firmware_in_cnt = 0xF000;
-			} else {
-				firmware_in_cnt = 0xF002;
-			}
+			firmware_in_cnt = 0xF002;
 		}
 	}
 
