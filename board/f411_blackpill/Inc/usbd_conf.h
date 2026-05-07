@@ -76,7 +76,19 @@ extern "C" {
 #define CUSTOM_HID_EPIN_SIZE                        0x40U  /* 64 -- one HID IN chunk */
 #define CUSTOM_HID_EPOUT_SIZE                       0x40U  /* 64 -- one HID OUT chunk */
 #define USBD_CUSTOMHID_OUTREPORT_BUF_SIZE           0x40U  /* 64 -- one HID OUT chunk */
+
+/* Report-descriptor size declared back to the host in wDescriptorLength.
+ * App build doesn't use Cube's CustomHID class anymore (Phase 4F switched
+ * to the hand-rolled composite class), so this macro only matters for
+ * the bootloader build. The bootloader build overrides it via
+ * -DUSBD_CUSTOM_HID_REPORT_DESC_SIZE=31U in armgcc/makefile.boot to match
+ * Boot_ReportDesc[] exactly. Without the override, Windows tries to parse
+ * the 150 trailing zeros and fails enumeration with Code 10
+ * (issue anpeaco/FreeJoyX#2). The 181 default is kept for any shared
+ * file that still references the macro under a non-bootloader build. */
+#ifndef USBD_CUSTOM_HID_REPORT_DESC_SIZE
 #define USBD_CUSTOM_HID_REPORT_DESC_SIZE            181U
+#endif
 
 /* Pass the entire 64-byte HID OUT buffer to OutEvent so the dispatch
  * code can read the report ID from byte[0] and route to the matching

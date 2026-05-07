@@ -53,11 +53,15 @@ static uint16_t  firmware_len = 0;
 static uint16_t  crc_in       = 0;
 
 /* HID report descriptor. Vendor-defined collection with REPORT_ID 4
- * carrying a 63-byte input + 63-byte output. Padded with zeros to
- * USBD_CUSTOM_HID_REPORT_DESC_SIZE (233 from the application's
- * usbd_conf.h) since the CustomHID class reports that fixed length to
- * the host -- valid HID parsers stop at END_COLLECTION 0xC0. */
-__ALIGN_BEGIN static uint8_t Boot_ReportDesc[USBD_CUSTOM_HID_REPORT_DESC_SIZE] __ALIGN_END = {
+ * carrying a 63-byte input + 63-byte output. Sized exactly to its
+ * 31 valid HID items -- USBD_CUSTOM_HID_REPORT_DESC_SIZE is overridden
+ * to 31 in the bootloader build (armgcc/makefile.boot). The static
+ * assert below pins the array length to that macro so the bytes the
+ * Cube CustomHID class library reports back to the host as
+ * wDescriptorLength match the descriptor exactly. Without that pin,
+ * trailing zeros from a longer declared length get parsed as malformed
+ * HID items and Windows rejects the device with Code 10. */
+__ALIGN_BEGIN static uint8_t Boot_ReportDesc[] __ALIGN_END = {
 	0x06, 0x00, 0xFF,             /* USAGE_PAGE (Vendor Defined 1) */
 	0x09, 0x01,                   /* USAGE (Vendor Usage 1) */
 	0xA1, 0x01,                   /* COLLECTION (Application) */
@@ -76,8 +80,11 @@ __ALIGN_BEGIN static uint8_t Boot_ReportDesc[USBD_CUSTOM_HID_REPORT_DESC_SIZE] _
 	0x91, 0x00,                   /*   OUTPUT (Data,Ary,Abs) */
 
 	0xC0,                         /* END_COLLECTION */
-	/* Trailing zeros to the 233-byte declared length follow. */
 };
+
+_Static_assert(sizeof(Boot_ReportDesc) == USBD_CUSTOM_HID_REPORT_DESC_SIZE,
+               "Boot_ReportDesc size drifted from USBD_CUSTOM_HID_REPORT_DESC_SIZE -- "
+               "update the -D override in armgcc/makefile.boot");
 
 static int8_t Boot_HID_Init(void)
 {

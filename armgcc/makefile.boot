@@ -69,7 +69,15 @@ AS_DEFS =
 # C defines from target plus any bootloader-level overrides.
 # BOOTLOADER lets shared sources (e.g. board/.../usbd_freejoy_desc.c)
 # omit application-only paths like reading dev_config from RAM.
-C_DEFS = $(TARGET_C_DEFS) -DBOOTLOADER
+#
+# USBD_CUSTOM_HID_REPORT_DESC_SIZE override (issue anpeaco/FreeJoyX#2):
+# the bootloader's Boot_ReportDesc is exactly 31 bytes (one vendor
+# collection with REPORT_ID 4). Cube's CustomHID class library reports
+# this macro back to the host as wDescriptorLength, so if the array is
+# sized to the larger app default (181), 150 trailing zeros leak out
+# and Windows rejects the device with Code 10. Forcing 31 here sizes
+# Boot_ReportDesc and the wDescriptorLength field in lockstep.
+C_DEFS = $(TARGET_C_DEFS) -DBOOTLOADER -DUSBD_CUSTOM_HID_REPORT_DESC_SIZE=31U
 
 # AS includes
 AS_INCLUDES =
