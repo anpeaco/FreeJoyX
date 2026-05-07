@@ -37,42 +37,27 @@ uint8_t DevConfigCheck (dev_config_t * p_dev_config)
 	return ret;
 }
 
-int DevConfigSet (dev_config_t * p_dev_config)
+void DevConfigSet (dev_config_t * p_dev_config)
 {
 	uint32_t data_addr = (uint32_t) p_dev_config;
 	uint32_t prog_addr;
-	int rc = 0;
-
+	
 	if (DevConfigCheck(p_dev_config) != 0)
-		return -1;
+		return;
 
 	prog_addr = CONFIG_ADDR;
 
 	ConfigFlash_Unlock();
-	for (int i = 0; i < CONFIG_PAGE_COUNT; i++)
+	for (int i=0; i<CONFIG_PAGE_COUNT; i++)
 	{
-		if (ConfigFlash_ErasePage(prog_addr + i * FLASH_PAGE_SIZE) != 0)
-		{
-			/* Erase failed -- subsequent word programs would land on
-			 * non-erased flash and only flip 1->0, producing silent
-			 * partial-write corruption. Bail out. */
-			rc = -1;
-			goto unlock_out;
-		}
+		ConfigFlash_ErasePage(prog_addr + i * FLASH_PAGE_SIZE);
 	}
 
-	for (int i = 0; i < (int)sizeof(dev_config_t); i += 4)
+	for (int i=0; i<sizeof(dev_config_t); i+=4)
 	{
-		if (ConfigFlash_WriteWord(prog_addr + i, *(uint32_t *)(data_addr + i)) != 0)
-		{
-			rc = -1;
-			goto unlock_out;
-		}
+		ConfigFlash_WriteWord(prog_addr+i, *(uint32_t *)(data_addr + i));
 	}
-
-unlock_out:
 	ConfigFlash_Lock();
-	return rc;
 }
 
 void DevConfigGet (dev_config_t * p_dev_config)

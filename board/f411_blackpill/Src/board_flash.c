@@ -30,7 +30,7 @@ void ConfigFlash_Lock(void)
 	HAL_FLASH_Lock();
 }
 
-int ConfigFlash_ErasePage(uint32_t page_addr)
+void ConfigFlash_ErasePage(uint32_t page_addr)
 {
 	/* The shared application/Src/config.c uses page-based erase loops;
 	 * F411 collapses each "page" to a single 64 KB sector erase since
@@ -46,7 +46,7 @@ int ConfigFlash_ErasePage(uint32_t page_addr)
 	else if (page_addr >= 0x08020000U && page_addr < 0x08040000U) sector = FLASH_SECTOR_5;
 	else if (page_addr >= 0x08040000U && page_addr < 0x08060000U) sector = FLASH_SECTOR_6;
 	else if (page_addr >= 0x08060000U && page_addr < 0x08080000U) sector = FLASH_SECTOR_7;
-	else return -1;
+	else return;
 
 	FLASH_EraseInitTypeDef erase = {
 		.TypeErase    = FLASH_TYPEERASE_SECTORS,
@@ -56,12 +56,10 @@ int ConfigFlash_ErasePage(uint32_t page_addr)
 		.VoltageRange = FLASH_VOLTAGE_RANGE_3,
 	};
 	uint32_t sector_error = 0;
-	HAL_StatusTypeDef st = HAL_FLASHEx_Erase(&erase, &sector_error);
-	return (st == HAL_OK) ? 0 : -1;
+	HAL_FLASHEx_Erase(&erase, &sector_error);
 }
 
-int ConfigFlash_WriteWord(uint32_t addr, uint32_t value)
+void ConfigFlash_WriteWord(uint32_t addr, uint32_t value)
 {
-	HAL_StatusTypeDef st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr, (uint64_t)value);
-	return (st == HAL_OK) ? 0 : -1;
+	HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr, (uint64_t)value);
 }
