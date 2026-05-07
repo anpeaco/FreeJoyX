@@ -73,7 +73,10 @@ int main(void)
 	// set default config at first startup
 	if ((dev_config.firmware_version & 0xFFF0) != (FIRMWARE_VERSION &0xFFF0))
 	{
-		DevConfigSet((dev_config_t *) &init_config);
+		/* If this fails, the version-mismatch check at the top of
+		 * the next boot will retry init_config. Self-healing on
+		 * power cycle; no action to take here. */
+		(void)DevConfigSet((dev_config_t *) &init_config);
 		DevConfigGet(&dev_config);
 	}
 	AppConfigInit(&dev_config);
