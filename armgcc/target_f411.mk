@@ -67,7 +67,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_misc.c \
 ../board/f411_blackpill/Src/board_pwm.c \
 ../board/f411_blackpill/Src/board_ws2812b.c \
-../board/f411_blackpill/Src/board_phase_stubs.c \
+../board/f411_blackpill/Src/board_cdc.c \
 ../board/f411_blackpill/Src/usbd_freejoy_desc.c \
 ../board/f411_blackpill/Src/usbd_freejoy_if.c \
 ../board/f411_blackpill/Src/usbd_freejoy_class.c \

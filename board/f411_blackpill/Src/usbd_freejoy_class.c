@@ -1,18 +1,25 @@
 /**
   ******************************************************************************
   * @file    usbd_freejoy_class.c
-  * @brief   F411 dual-HID composite class — Phase 4F implementation.
+  * @brief   F411 HID+HID+CDC composite class — Phases 4F + 4E.
   *
   * Routes Setup / DataIn / DataOut by interface number and endpoint
-  * across two HID interfaces:
+  * across four interfaces:
   *
   *   Interface 0 — Joystick HID (EP1 IN)
   *   Interface 1 — Configurator HID (EP2 IN, EP2 OUT)
+  *   Interface 2 — CDC Communication (no endpoints; notification omitted
+  *                                    per Phase 4E plan, Option A)
+  *   Interface 3 — CDC Data (EP3 IN bulk, EP3 OUT bulk)
   *
-  * Modeled on Cube's `Class/CustomHID/Src/usbd_customhid.c` but with
-  * per-interface state and a combined config descriptor. Matches F103's
-  * dual-HID layout (application/Src/usb_desc.c) so usbccgp.sys binds and
-  * Windows refreshes per-interface friendly names on every enumeration.
+  * Modeled on Cube's `Class/CustomHID/Src/usbd_customhid.c` (HID parts)
+  * and F103's hand-rolled USB-FS-Device CDC handlers in
+  * `application/Src/usb_endp.c` and `application/Src/usb_prop.c` (CDC
+  * parts) but unified into one composite class. Matches F103's 4-interface
+  * layout (application/Src/usb_desc.c::Composite_ConfigDescriptor) byte-
+  * for-byte except the CDC notification endpoint is dropped (F411 OTG-FS
+  * only has 4 IN EP slots, all four taken by EP0 ctrl + Joy + Cfg +
+  * CDC bulk; see Phase 4E plan).
   ******************************************************************************
   */
 
@@ -20,23 +27,46 @@
 #include "usbd_ctlreq.h"
 #include "usbd_core.h"
 
+#include "simhub.h"          /* SH_ProcessIncomingData, SH_BufferFreeSize */
+
 #include <string.h>
 
 /*============================================================================
- *  Combined configuration descriptor (66 bytes)
+ *  Combined configuration descriptor (125 bytes — Phase 4E)
  *
- *  Layout matches F103's first two interfaces in
- *  application/Src/usb_desc.c::Composite_ConfigDescriptor[]:
- *    9 bytes   Configuration header (bNumInterfaces=2, bus-powered, 100mA)
- *    9 bytes   Interface 0 — Joystick HID, 1 endpoint
- *    9 bytes   HID class descriptor (joy report descriptor pointer)
- *    7 bytes   Endpoint 1 IN, interrupt, 64 bytes, 1 ms
- *    9 bytes   Interface 1 — Configurator HID, 2 endpoints
- *    9 bytes   HID class descriptor (configurator report descriptor pointer)
- *    7 bytes   Endpoint 2 IN, interrupt, 64 bytes, 2 ms
- *    7 bytes   Endpoint 2 OUT, interrupt, 64 bytes, 16 ms
+ *  Layout matches F103's four-interface layout in
+ *  application/Src/usb_desc.c::Composite_ConfigDescriptor[] EXCEPT:
+ *    - Interface 2 (CDC Communication) declares bNumEndpoints = 0 and
+ *      omits the interrupt-IN notification endpoint. F103 declares it
+ *      on EP3 IN (8 bytes); F411 OTG-FS doesn't have a 5th IN slot
+ *      to spare. SimHub never reads notifications anyway -- they're
+ *      modem-state changes (DCD, ring, framing errors) that don't apply
+ *      to a virtual COM on a USB joystick. Linux cdc-acm + Windows
+ *      usbser.sys + macOS IOUSBHost all bind the device fine without
+ *      it. (Phase 4E plan, Option A.)
+ *
+ *  Byte breakdown:
+ *     9 bytes   Configuration header (bNumInterfaces=4, bus-powered, 100 mA)
+ *     9 bytes   Interface 0 — Joystick HID, 1 endpoint
+ *     9 bytes   HID class descriptor (joy report descriptor pointer)
+ *     7 bytes   Endpoint 1 IN, interrupt, 64 bytes, 1 ms
+ *     9 bytes   Interface 1 — Configurator HID, 2 endpoints
+ *     9 bytes   HID class descriptor (configurator report descriptor pointer)
+ *     7 bytes   Endpoint 2 IN, interrupt, 64 bytes, 2 ms
+ *     7 bytes   Endpoint 2 OUT, interrupt, 64 bytes, 16 ms
+ *     8 bytes   IAD: associates interfaces 2-3 as one CDC function
+ *     9 bytes   Interface 2 — CDC Communication, 0 endpoints (Option A)
+ *     5 bytes   CDC Header functional descriptor
+ *     5 bytes   CDC Call Management functional descriptor
+ *     4 bytes   CDC ACM functional descriptor
+ *     5 bytes   CDC Union functional descriptor
+ *     9 bytes   Interface 3 — CDC Data, 2 bulk endpoints
+ *     7 bytes   Endpoint 3 IN, bulk, 64 bytes
+ *     7 bytes   Endpoint 3 OUT, bulk, 64 bytes
+ *  ---------
+ *   125 bytes total.
  *============================================================================*/
-#define USBD_FREEJOY_CFG_DESC_SIZ  66U
+#define USBD_FREEJOY_CFG_DESC_SIZ  125U
 
 __ALIGN_BEGIN static uint8_t USBD_FreeJoy_CfgDesc[USBD_FREEJOY_CFG_DESC_SIZ] __ALIGN_END = {
 	/* Configuration descriptor */
@@ -44,7 +74,7 @@ __ALIGN_BEGIN static uint8_t USBD_FreeJoy_CfgDesc[USBD_FREEJOY_CFG_DESC_SIZ] __A
 	USB_DESC_TYPE_CONFIGURATION,           /* bDescriptorType */
 	LOBYTE(USBD_FREEJOY_CFG_DESC_SIZ),     /* wTotalLength LSB */
 	HIBYTE(USBD_FREEJOY_CFG_DESC_SIZ),     /* wTotalLength MSB */
-	0x02,                                  /* bNumInterfaces */
+	0x04,                                  /* bNumInterfaces */
 	0x01,                                  /* bConfigurationValue */
 	0x00,                                  /* iConfiguration */
 	0x80,                                  /* bmAttributes: bus-powered */
@@ -122,7 +152,99 @@ __ALIGN_BEGIN static uint8_t USBD_FreeJoy_CfgDesc[USBD_FREEJOY_CFG_DESC_SIZ] __A
 	LOBYTE(FREEJOY_CFG_EPOUT_SIZE),        /* wMaxPacketSize LSB */
 	HIBYTE(FREEJOY_CFG_EPOUT_SIZE),        /* wMaxPacketSize MSB */
 	FREEJOY_CFG_EPOUT_FS_BINTERVAL,        /* bInterval: 16 ms */
+
+	/*--- IAD: Interface Association Descriptor ---
+	 * Tells the host that interfaces 2-3 are one CDC function so
+	 * Windows binds usbser.sys to them as a single COM port. Without
+	 * the IAD, Windows would treat the two CDC interfaces as
+	 * separate functions and the device wouldn't enumerate as a COM
+	 * port at all. */
+	0x08,                                  /* bLength */
+	0x0B,                                  /* bDescriptorType: IAD */
+	0x02,                                  /* bFirstInterface */
+	0x02,                                  /* bInterfaceCount */
+	0x02,                                  /* bFunctionClass: CDC */
+	0x02,                                  /* bFunctionSubClass: ACM */
+	0x01,                                  /* bFunctionProtocol: V.250 AT */
+	0x00,                                  /* iFunction */
+
+	/*--- Interface 2: CDC Communication Class, 0 endpoints (Option A) ---*/
+	0x09,                                  /* bLength */
+	USB_DESC_TYPE_INTERFACE,               /* bDescriptorType */
+	0x02,                                  /* bInterfaceNumber */
+	0x00,                                  /* bAlternateSetting */
+	0x00,                                  /* bNumEndpoints (no notification EP) */
+	0x02,                                  /* bInterfaceClass: CDC */
+	0x02,                                  /* bInterfaceSubClass: ACM */
+	0x01,                                  /* bInterfaceProtocol: V.250 AT */
+	0x00,                                  /* iInterface */
+
+	/* CDC Header functional descriptor */
+	0x05,                                  /* bFunctionLength */
+	0x24,                                  /* bDescriptorType: CS_INTERFACE */
+	0x00,                                  /* bDescriptorSubtype: Header */
+	0x10, 0x01,                            /* bcdCDC: 1.10 */
+
+	/* CDC Call Management functional descriptor */
+	0x05,                                  /* bFunctionLength */
+	0x24,                                  /* bDescriptorType: CS_INTERFACE */
+	0x01,                                  /* bDescriptorSubtype: Call Mgmt */
+	0x00,                                  /* bmCapabilities: D0+D1=0
+	                                        *   (we don't handle call mgmt) */
+	0x03,                                  /* bDataInterface: 3 */
+
+	/* CDC ACM functional descriptor */
+	0x04,                                  /* bFunctionLength */
+	0x24,                                  /* bDescriptorType: CS_INTERFACE */
+	0x02,                                  /* bDescriptorSubtype: ACM */
+	0x02,                                  /* bmCapabilities: supports
+	                                        *   Set/Get/Set_Line_Coding +
+	                                        *   Set_Control_Line_State +
+	                                        *   Serial_State (matches F103) */
+
+	/* CDC Union functional descriptor */
+	0x05,                                  /* bFunctionLength */
+	0x24,                                  /* bDescriptorType: CS_INTERFACE */
+	0x06,                                  /* bDescriptorSubtype: Union */
+	0x02,                                  /* bMasterInterface: 2 */
+	0x03,                                  /* bSlaveInterface0: 3 */
+
+	/*--- Interface 3: CDC Data Class, 2 bulk endpoints ---*/
+	0x09,                                  /* bLength */
+	USB_DESC_TYPE_INTERFACE,               /* bDescriptorType */
+	0x03,                                  /* bInterfaceNumber */
+	0x00,                                  /* bAlternateSetting */
+	0x02,                                  /* bNumEndpoints */
+	0x0A,                                  /* bInterfaceClass: CDC Data */
+	0x00,                                  /* bInterfaceSubClass */
+	0x00,                                  /* bInterfaceProtocol */
+	0x00,                                  /* iInterface */
+
+	/* Endpoint 3 IN — CDC bulk, device → host (SimHub TX) */
+	0x07,                                  /* bLength */
+	USB_DESC_TYPE_ENDPOINT,                /* bDescriptorType */
+	FREEJOY_CDC_DATA_EPIN_ADDR,            /* bEndpointAddress: 0x83 */
+	0x02,                                  /* bmAttributes: bulk */
+	LOBYTE(FREEJOY_CDC_DATA_SIZE),         /* wMaxPacketSize LSB */
+	HIBYTE(FREEJOY_CDC_DATA_SIZE),         /* wMaxPacketSize MSB */
+	0x00,                                  /* bInterval: ignored for bulk */
+
+	/* Endpoint 3 OUT — CDC bulk, host → device (SimHub RX) */
+	0x07,                                  /* bLength */
+	USB_DESC_TYPE_ENDPOINT,                /* bDescriptorType */
+	FREEJOY_CDC_DATA_EPOUT_ADDR,           /* bEndpointAddress: 0x03 */
+	0x02,                                  /* bmAttributes: bulk */
+	LOBYTE(FREEJOY_CDC_DATA_SIZE),         /* wMaxPacketSize LSB */
+	HIBYTE(FREEJOY_CDC_DATA_SIZE),         /* wMaxPacketSize MSB */
+	0x00,                                  /* bInterval: ignored for bulk */
 };
+
+/* Compile-time pin: any descriptor drift fails the build instead of
+ * shipping a malformed config. Mirrors the discipline established for
+ * FREEJOY_JOY_REPORT_DESC_SIZE and FREEJOY_CFG_REPORT_DESC_SIZE in
+ * usbd_freejoy_if.c. */
+_Static_assert(sizeof(USBD_FreeJoy_CfgDesc) == USBD_FREEJOY_CFG_DESC_SIZ,
+               "Composite descriptor size drifted from USBD_FREEJOY_CFG_DESC_SIZ");
 
 /* Standard HID class descriptor reused for GET_DESCRIPTOR (DescriptorType
  * 0x21) responses. Two variants — joystick and configurator — keyed on
@@ -204,22 +326,47 @@ static uint8_t USBD_FreeJoy_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
 	pdev->ep_in[FREEJOY_CFG_EPIN_ADDR & 0xFU].bInterval   = FREEJOY_CFG_EPIN_FS_BINTERVAL;
 	pdev->ep_out[FREEJOY_CFG_EPOUT_ADDR & 0xFU].bInterval = FREEJOY_CFG_EPOUT_FS_BINTERVAL;
 
-	(void)USBD_LL_OpenEP(pdev, FREEJOY_JOY_EPIN_ADDR,   USBD_EP_TYPE_INTR, FREEJOY_JOY_EPIN_SIZE);
-	(void)USBD_LL_OpenEP(pdev, FREEJOY_CFG_EPIN_ADDR,   USBD_EP_TYPE_INTR, FREEJOY_CFG_EPIN_SIZE);
-	(void)USBD_LL_OpenEP(pdev, FREEJOY_CFG_EPOUT_ADDR,  USBD_EP_TYPE_INTR, FREEJOY_CFG_EPOUT_SIZE);
+	(void)USBD_LL_OpenEP(pdev, FREEJOY_JOY_EPIN_ADDR,       USBD_EP_TYPE_INTR, FREEJOY_JOY_EPIN_SIZE);
+	(void)USBD_LL_OpenEP(pdev, FREEJOY_CFG_EPIN_ADDR,       USBD_EP_TYPE_INTR, FREEJOY_CFG_EPIN_SIZE);
+	(void)USBD_LL_OpenEP(pdev, FREEJOY_CFG_EPOUT_ADDR,      USBD_EP_TYPE_INTR, FREEJOY_CFG_EPOUT_SIZE);
+	(void)USBD_LL_OpenEP(pdev, FREEJOY_CDC_DATA_EPIN_ADDR,  USBD_EP_TYPE_BULK, FREEJOY_CDC_DATA_SIZE);
+	(void)USBD_LL_OpenEP(pdev, FREEJOY_CDC_DATA_EPOUT_ADDR, USBD_EP_TYPE_BULK, FREEJOY_CDC_DATA_SIZE);
 
-	pdev->ep_in[FREEJOY_JOY_EPIN_ADDR & 0xFU].is_used   = 1U;
-	pdev->ep_in[FREEJOY_CFG_EPIN_ADDR & 0xFU].is_used   = 1U;
-	pdev->ep_out[FREEJOY_CFG_EPOUT_ADDR & 0xFU].is_used = 1U;
+	pdev->ep_in[FREEJOY_JOY_EPIN_ADDR & 0xFU].is_used       = 1U;
+	pdev->ep_in[FREEJOY_CFG_EPIN_ADDR & 0xFU].is_used       = 1U;
+	pdev->ep_out[FREEJOY_CFG_EPOUT_ADDR & 0xFU].is_used     = 1U;
+	pdev->ep_in[FREEJOY_CDC_DATA_EPIN_ADDR & 0xFU].is_used  = 1U;
+	pdev->ep_out[FREEJOY_CDC_DATA_EPOUT_ADDR & 0xFU].is_used = 1U;
 
-	h->joy_state = FREEJOY_HID_IDLE;
-	h->cfg_state = FREEJOY_HID_IDLE;
+	h->joy_state    = FREEJOY_HID_IDLE;
+	h->cfg_state    = FREEJOY_HID_IDLE;
+	h->cdc_in_state = FREEJOY_HID_IDLE;
+	h->cdc_rx_armed = 0U;
+
+	/* CDC line-coding default: 115200 8N1. Mirrors F103's default in
+	 * application/Src/usb_prop.c::CDC_GetLineCoding. The actual baud
+	 * rate is meaningless for our virtual COM, but Windows mode-checks
+	 * what we report so we keep it consistent. */
+	h->cdc_line_coding[0] = 0x00;       /* dwDTERate LSB */
+	h->cdc_line_coding[1] = 0xC2;       /* 0x0001C200 = 115200 */
+	h->cdc_line_coding[2] = 0x01;
+	h->cdc_line_coding[3] = 0x00;       /* dwDTERate MSB */
+	h->cdc_line_coding[4] = 0x00;       /* bCharFormat: 1 stop bit */
+	h->cdc_line_coding[5] = 0x00;       /* bParityType: none */
+	h->cdc_line_coding[6] = 0x08;       /* bDataBits: 8 */
 
 	/* Pre-arm EP2 OUT so the host can queue the first OUT report. The
 	 * configurator's first interaction is normally Read Config (REPORT_ID 4
 	 * OUT) which fails silently if the EP isn't armed yet. */
 	(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CFG_EPOUT_ADDR,
 	                             h->ep2_out_buf, FREEJOY_OUTREPORT_BUF_SIZE);
+
+	/* Pre-arm EP3 OUT so SimHub LED-config bytes can land as soon as
+	 * the host opens the COM port. Mirrors the F103 EP4_OUT bring-up
+	 * in application/Src/usb_prop.c::CustomHID_Reset. */
+	(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CDC_DATA_EPOUT_ADDR,
+	                             h->cdc_rx_buf, FREEJOY_CDC_DATA_SIZE);
+	h->cdc_rx_armed = 1U;
 
 	return (uint8_t)USBD_OK;
 }
@@ -240,6 +387,12 @@ static uint8_t USBD_FreeJoy_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
 	pdev->ep_out[FREEJOY_CFG_EPOUT_ADDR & 0xFU].is_used   = 0U;
 	pdev->ep_out[FREEJOY_CFG_EPOUT_ADDR & 0xFU].bInterval = 0U;
 
+	(void)USBD_LL_CloseEP(pdev, FREEJOY_CDC_DATA_EPIN_ADDR);
+	pdev->ep_in[FREEJOY_CDC_DATA_EPIN_ADDR & 0xFU].is_used = 0U;
+
+	(void)USBD_LL_CloseEP(pdev, FREEJOY_CDC_DATA_EPOUT_ADDR);
+	pdev->ep_out[FREEJOY_CDC_DATA_EPOUT_ADDR & 0xFU].is_used = 0U;
+
 	if (pdev->pClassDataCmsit[pdev->classId] != NULL) {
 		USBD_free(pdev->pClassDataCmsit[pdev->classId]);
 		pdev->pClassDataCmsit[pdev->classId] = NULL;
@@ -247,6 +400,113 @@ static uint8_t USBD_FreeJoy_DeInit(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
 	}
 
 	return (uint8_t)USBD_OK;
+}
+
+/*============================================================================
+ *  CDC SETUP — class + standard requests for interfaces 2 (CDC Comm)
+ *  and 3 (CDC Data).
+ *
+ *  Mirrors F103's CustomHID_Data_Setup CDC paths in
+ *  application/Src/usb_prop.c::CustomHID_Data_Setup +
+ *  CustomHID_NoData_Setup. The line-coding GET/SET, control-line-state
+ *  and send-break are class requests; GET_INTERFACE / SET_INTERFACE /
+ *  GET_STATUS are standard.
+ *
+ *  The CDC Data interface (3) has no class requests of its own and only
+ *  needs the standard interface requests; we handle it here for
+ *  symmetry rather than dispatching it back into the HID path.
+ *==========================================================================*/
+static uint8_t USBD_FreeJoy_SetupCdc(USBD_HandleTypeDef *pdev,
+                                     USBD_SetupReqTypedef *req,
+                                     USBD_FreeJoy_HandleTypeDef *h,
+                                     uint8_t iface)
+{
+	uint16_t           status_info = 0U;
+	uint8_t            zero        = 0U;
+	USBD_StatusTypeDef ret         = USBD_OK;
+
+	switch (req->bmRequest & USB_REQ_TYPE_MASK) {
+	case USB_REQ_TYPE_CLASS:
+		if (iface != 2U) {
+			USBD_CtlError(pdev, req);
+			return (uint8_t)USBD_FAIL;
+		}
+		switch (req->bRequest) {
+		case CDC_GET_LINE_CODING:
+			(void)USBD_CtlSendData(pdev, h->cdc_line_coding,
+			                       (uint16_t)CDC_LINE_CODING_LEN);
+			break;
+
+		case CDC_SET_LINE_CODING:
+			/* 7-byte payload follows on EP0; route in EP0_RxReady. */
+			if (req->wLength != (uint16_t)CDC_LINE_CODING_LEN) {
+				USBD_CtlError(pdev, req);
+				return (uint8_t)USBD_FAIL;
+			}
+			h->set_line_coding_pending = 1U;
+			(void)USBD_CtlPrepareRx(pdev, h->cdc_line_coding,
+			                        (uint16_t)CDC_LINE_CODING_LEN);
+			break;
+
+		case CDC_SET_CONTROL_LINE_STATE:
+		case CDC_SEND_BREAK:
+			/* No-op: we don't back a real UART. F103 does the same
+			 * (application/Src/usb_prop.c::SET_CONTROL_LINE_STATE
+			 * returns USB_SUCCESS without doing anything). */
+			break;
+
+		default:
+			USBD_CtlError(pdev, req);
+			ret = USBD_FAIL;
+			break;
+		}
+		break;
+
+	case USB_REQ_TYPE_STANDARD:
+		switch (req->bRequest) {
+		case USB_REQ_GET_STATUS:
+			if (pdev->dev_state == USBD_STATE_CONFIGURED) {
+				(void)USBD_CtlSendData(pdev, (uint8_t *)&status_info, 2U);
+			} else {
+				USBD_CtlError(pdev, req);
+				ret = USBD_FAIL;
+			}
+			break;
+
+		case USB_REQ_GET_INTERFACE:
+			/* CDC interfaces only support alt-setting 0. */
+			if (pdev->dev_state == USBD_STATE_CONFIGURED) {
+				(void)USBD_CtlSendData(pdev, &zero, 1U);
+			} else {
+				USBD_CtlError(pdev, req);
+				ret = USBD_FAIL;
+			}
+			break;
+
+		case USB_REQ_SET_INTERFACE:
+			if (pdev->dev_state != USBD_STATE_CONFIGURED || req->wValue != 0U) {
+				USBD_CtlError(pdev, req);
+				ret = USBD_FAIL;
+			}
+			break;
+
+		case USB_REQ_CLEAR_FEATURE:
+			break;
+
+		default:
+			USBD_CtlError(pdev, req);
+			ret = USBD_FAIL;
+			break;
+		}
+		break;
+
+	default:
+		USBD_CtlError(pdev, req);
+		ret = USBD_FAIL;
+		break;
+	}
+
+	return (uint8_t)ret;
 }
 
 /*============================================================================
@@ -263,6 +523,12 @@ static uint8_t USBD_FreeJoy_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef
 	if (h == NULL) return (uint8_t)USBD_FAIL;
 
 	const uint8_t iface = (uint8_t)(req->wIndex & 0xFFU);
+
+	/* CDC interfaces (2 = CDC Comm, 3 = CDC Data) have a separate
+	 * class-request set and no HID descriptors; route them off. */
+	if (iface >= 2U) {
+		return USBD_FreeJoy_SetupCdc(pdev, req, h, iface);
+	}
 
 	uint8_t        *protocol      = (iface == 0U) ? &h->joy_protocol      : &h->cfg_protocol;
 	uint8_t        *idle_state    = (iface == 0U) ? &h->joy_idle_state    : &h->cfg_idle_state;
@@ -386,11 +652,17 @@ static uint8_t USBD_FreeJoy_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef
 }
 
 /*============================================================================
- *  EP0_RxReady — SET_REPORT data has arrived on EP0
+ *  EP0_RxReady — SET_REPORT or SET_LINE_CODING data has arrived on EP0
  *
- *  The 1-byte / few-byte payloads our protocol sends via SET_REPORT (e.g.
- *  the firmware-update trigger string on REPORT_ID 5) end up here. Route
- *  to the configurator OutEvent if that's the target interface.
+ *  Two staged data-stage receives can land here:
+ *    - HID SET_REPORT payload (REPORT_ID 5 firmware trigger, etc.) was
+ *      copied into h->ep2_out_buf via USBD_CtlPrepareRx in Setup. Route
+ *      to the configurator OutEvent.
+ *    - CDC SET_LINE_CODING payload (7 bytes) was copied directly into
+ *      h->cdc_line_coding by USBD_CtlPrepareRx in SetupCdc. No-op here
+ *      because the buffer is already up to date; we just clear the
+ *      pending flag so a subsequent stray RxReady doesn't get routed
+ *      to the configurator OutEvent.
  *==========================================================================*/
 static uint8_t USBD_FreeJoy_EP0_RxReady(USBD_HandleTypeDef *pdev)
 {
@@ -398,7 +670,11 @@ static uint8_t USBD_FreeJoy_EP0_RxReady(USBD_HandleTypeDef *pdev)
 		(USBD_FreeJoy_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
 	if (h == NULL) return (uint8_t)USBD_FAIL;
 
-	if (h->set_report_pending) {
+	if (h->set_line_coding_pending) {
+		h->set_line_coding_pending = 0U;
+		/* Line coding now reflects the host's request. Nothing else to
+		 * do -- we don't own a real UART. */
+	} else if (h->set_report_pending) {
 		h->set_report_pending = 0U;
 		if (h->set_report_target_iface == 1U) {
 			FreeJoy_CfgOutEvent(h->ep2_out_buf);
@@ -422,12 +698,19 @@ static uint8_t USBD_FreeJoy_DataIn(USBD_HandleTypeDef *pdev, uint8_t epnum)
 		h->joy_state = FREEJOY_HID_IDLE;
 	} else if (ep == (FREEJOY_CFG_EPIN_ADDR & 0x0FU)) {
 		h->cfg_state = FREEJOY_HID_IDLE;
+	} else if (ep == (FREEJOY_CDC_DATA_EPIN_ADDR & 0x0FU)) {
+		/* Mirrors F103's EP5_IN_Callback in
+		 * application/Src/usb_endp.c -- clears the
+		 * EP5_PrevXferComplete flag so the next CDC_Send_DATA
+		 * call can queue another bulk packet. */
+		h->cdc_in_state = FREEJOY_HID_IDLE;
 	}
 	return (uint8_t)USBD_OK;
 }
 
 /*============================================================================
- *  DataOut — OUT report received on EP2 OUT; dispatch + re-arm
+ *  DataOut — OUT report received on EP2 OUT (HID) or EP3 OUT (CDC bulk);
+ *  dispatch + re-arm.
  *==========================================================================*/
 static uint8_t USBD_FreeJoy_DataOut(USBD_HandleTypeDef *pdev, uint8_t epnum)
 {
@@ -435,12 +718,31 @@ static uint8_t USBD_FreeJoy_DataOut(USBD_HandleTypeDef *pdev, uint8_t epnum)
 		(USBD_FreeJoy_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
 	if (h == NULL) return (uint8_t)USBD_FAIL;
 
-	if ((epnum & 0x0FU) == (FREEJOY_CFG_EPOUT_ADDR & 0x0FU)) {
+	const uint8_t ep = (uint8_t)(epnum & 0x0FU);
+	if (ep == (FREEJOY_CFG_EPOUT_ADDR & 0x0FU)) {
 		FreeJoy_CfgOutEvent(h->ep2_out_buf);
 		/* Re-arm immediately. Cube's CustomHID class made callers do
 		 * this manually; we own the dispatcher so we always re-arm. */
 		(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CFG_EPOUT_ADDR,
 		                             h->ep2_out_buf, FREEJOY_OUTREPORT_BUF_SIZE);
+	} else if (ep == (FREEJOY_CDC_DATA_EPOUT_ADDR & 0x0FU)) {
+		/* Mirrors F103's EP4_OUT_Callback in
+		 * application/Src/usb_endp.c. Push the received bytes into
+		 * the SimHub ring buffer and re-arm the receive only if the
+		 * ring still has space; otherwise SH_ProcessEndpData (called
+		 * from simhub.c::SH_Read on the polled path) re-arms after
+		 * the application drains the ring. */
+		uint32_t rx_len = USBD_LL_GetRxDataSize(pdev, ep);
+		uint16_t free_size = MAX_RING_BIF_SIZE;
+		h->cdc_rx_armed = 0U;
+		if (rx_len > 0U) {
+			free_size = SH_ProcessIncomingData(h->cdc_rx_buf, (uint8_t)rx_len);
+		}
+		if (free_size > SH_PACKET_SIZE) {
+			h->cdc_rx_armed = 1U;
+			(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CDC_DATA_EPOUT_ADDR,
+			                             h->cdc_rx_buf, FREEJOY_CDC_DATA_SIZE);
+		}
 	}
 	return (uint8_t)USBD_OK;
 }
@@ -511,4 +813,59 @@ uint8_t USBD_FreeJoy_ReceivePacket(USBD_HandleTypeDef *pdev)
 	(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CFG_EPOUT_ADDR,
 	                             h->ep2_out_buf, FREEJOY_OUTREPORT_BUF_SIZE);
 	return (uint8_t)USBD_OK;
+}
+
+/*============================================================================
+ *  CDC TX -- mirrors F103's CDC_Send_DATA (application/Src/usb_endp.c:220).
+ *
+ *  Inverted return value preserved (see usbd_freejoy_class.h):
+ *    -1  -> queued for transmit
+ *     0  -> BUSY (previous packet still in flight, device not configured,
+ *           or len >= 64). simhub.c callers ignore the return value but
+ *           the convention is documented.
+ *
+ *  The data MUST be copied into h->cdc_tx_buf rather than handed straight
+ *  to USBD_LL_Transmit -- per memory note
+ *  project_f411_async_fifo_stack_buffer.md, the OTG-FS PCD reads the
+ *  source buffer asynchronously from the TXFE IRQ, so a stack buffer can
+ *  go out of scope before the FIFO load completes and the host receives
+ *  garbage. The handle struct is statically allocated, so cdc_tx_buf
+ *  lives long enough.
+ *==========================================================================*/
+int8_t USBD_FreeJoy_SendCdcData(USBD_HandleTypeDef *pdev,
+                                uint8_t *data, uint8_t len)
+{
+	USBD_FreeJoy_HandleTypeDef *h =
+		(USBD_FreeJoy_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
+	if (h == NULL) return 0;
+	if (pdev->dev_state != USBD_STATE_CONFIGURED) return 0;
+	if (h->cdc_in_state != FREEJOY_HID_IDLE) return 0;
+	if (len >= FREEJOY_CDC_DATA_SIZE) return 0;
+
+	memcpy(h->cdc_tx_buf, data, len);
+	h->cdc_in_state = FREEJOY_HID_BUSY;
+	(void)USBD_LL_Transmit(pdev, FREEJOY_CDC_DATA_EPIN_ADDR,
+	                       h->cdc_tx_buf, len);
+	return -1;
+}
+
+/*============================================================================
+ *  CDC RX re-arm helper -- mirrors F103's SH_ProcessEndpData
+ *  (application/Src/usb_endp.c:179). Called from simhub.c::SH_Read on
+ *  the polled wait loop; lets the EP3 OUT receive resume after the ring
+ *  buffer drains via RB_Pop.
+ *==========================================================================*/
+void USBD_FreeJoy_RearmCdcReceive(USBD_HandleTypeDef *pdev)
+{
+	USBD_FreeJoy_HandleTypeDef *h =
+		(USBD_FreeJoy_HandleTypeDef *)pdev->pClassDataCmsit[pdev->classId];
+	if (h == NULL) return;
+	if (pdev->dev_state != USBD_STATE_CONFIGURED) return;
+	if (h->cdc_rx_armed) return;                 /* already pending */
+
+	if (SH_BufferFreeSize() > SH_PACKET_SIZE) {
+		h->cdc_rx_armed = 1U;
+		(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CDC_DATA_EPOUT_ADDR,
+		                             h->cdc_rx_buf, FREEJOY_CDC_DATA_SIZE);
+	}
 }
