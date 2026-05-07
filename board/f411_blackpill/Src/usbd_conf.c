@@ -170,22 +170,27 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
 	 *   EP1 IN FIFO     128 words = 512 bytes (margin for back-to-back IN)
 	 *   total           320 words = 1280 bytes (full budget)
 	 *
-	 * Application (Phase 4F dual-HID composite, EP1 IN + EP2 IN/OUT):
-	 *   RX shared FIFO  128 words = 512 bytes (handles EP2 OUT + SETUP)
+	 * Application (Phase 4E HID+HID+CDC, EP1 IN + EP2 IN/OUT + EP3 IN/OUT):
+	 *   RX shared FIFO   96 words = 384 bytes (EP2 OUT + EP3 OUT + SETUP;
+	 *                                          formula min for 2 OUT EPs at
+	 *                                          64-byte packets is ~51
+	 *                                          words, so ~1.9x margin)
 	 *   EP0 IN FIFO      64 words = 256 bytes
-	 *   EP1 IN FIFO      64 words = 256 bytes (one 64-byte joystick
-	 *                                          report = 16 words; 64 words
-	 *                                          gives 4-deep margin)
-	 *   EP2 IN FIFO      64 words = 256 bytes (same depth as EP1 IN)
+	 *   EP1 IN FIFO      64 words = 256 bytes (joy)
+	 *   EP2 IN FIFO      64 words = 256 bytes (cfg)
+	 *   EP3 IN FIFO      32 words = 128 bytes (CDC bulk; 2x 64-byte
+	 *                                          packets pipelined)
 	 *   total           320 words = 1280 bytes (full budget — no slack)
 	 */
-	HAL_PCDEx_SetRxFiFo(&hpcd, 0x80);
 	HAL_PCDEx_SetTxFiFo(&hpcd, 0, 0x40);
 #ifdef BOOTLOADER
+	HAL_PCDEx_SetRxFiFo(&hpcd, 0x80);
 	HAL_PCDEx_SetTxFiFo(&hpcd, 1, 0x80);
 #else
+	HAL_PCDEx_SetRxFiFo(&hpcd, 0x60);
 	HAL_PCDEx_SetTxFiFo(&hpcd, 1, 0x40);
 	HAL_PCDEx_SetTxFiFo(&hpcd, 2, 0x40);
+	HAL_PCDEx_SetTxFiFo(&hpcd, 3, 0x20);
 #endif
 
 	return USBD_OK;
