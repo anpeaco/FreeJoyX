@@ -238,8 +238,16 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 				} else {
 					tmp_dev_config.firmware_version = FIRMWARE_VERSION;
 					tmp_dev_config.board_id = BOARD_ID;
-					DevConfigSet(&tmp_dev_config);
-					NVIC_SystemReset();
+					/* If the flash write failed (issue anpeaco/FreeJoyX#3),
+					 * skip the system reset and leave the device alive so
+					 * the user can retry without it cycling into the
+					 * version-mismatch path on the next boot. The
+					 * configurator's host-side loop times out waiting for
+					 * the post-reset reconnect and the user sees a
+					 * stalled Write -- better than a brick + reboot loop. */
+					if (DevConfigSet(&tmp_dev_config) == 0) {
+						NVIC_SystemReset();
+					}
 				}
 			}
 			break;
