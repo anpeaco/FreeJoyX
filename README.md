@@ -98,6 +98,12 @@ make release RELEASE_VERSION=v1.7.8
 
 Output binaries are named `freejoyx-<board>-<app|boot>-<version>.bin` so the configurator's flasher picks the correct image per connected board.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build, commit, and PR guidance.
+See [STYLE.md](STYLE.md) for the inherited code style and the wire-format
+lockstep rule.
+
 ## FreeJoy Configurator utility
 
 FreeJoyX is paired with [FreeJoyConfiguratorQtX](../FreeJoyConfiguratorQtX) — the matching desktop configurator (forked from [FreeJoyConfiguratorQt](https://github.com/FreeJoy-Team/FreeJoyConfiguratorQt)). The two repos must stay in lockstep: `application/Inc/common_types.h` and `application/Inc/common_defines.h` are kept in manual sync with the configurator's copies on every wire-format change.

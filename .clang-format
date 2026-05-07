@@ -1,0 +1,61 @@
+# clang-format config for FreeJoyX firmware.
+#
+# ADVISORY ONLY -- this file describes the inherited upstream style so new
+# code can converge on it. DO NOT run `clang-format -i` over the whole tree:
+# this is a fork of github.com/FreeJoy-Team/FreeJoy and bulk reformatting
+# would create perpetual merge friction with upstream.
+#
+# Style summary:
+#   - Tab indent, 4-wide
+#   - Allman braces (opening brace on its own line for functions AND control
+#     statements). Sampled from buttons.c, encoders.c, analog.c.
+#   - K&R-style typedefs / structs (opening brace inline).
+#   - 100-column soft limit; long lines tolerated for tabular data.
+#   - Doxygen-style block comments on public functions (@brief / @param / @retval).
+#
+# Use this with `clang-format --style=file` on individual files only when
+# extending or rewriting them. Pre-commit auto-format is intentionally NOT
+# wired up. See STYLE.md for rationale.
+
+Language:        Cpp
+BasedOnStyle:    LLVM
+IndentWidth:     4
+TabWidth:        4
+UseTab:          ForIndentation
+ColumnLimit:     100
+
+# Allman braces -- opening brace on its own line everywhere.
+BreakBeforeBraces: Allman
+
+# Pointers bind to the variable: `dev_config_t *p_dev_config`
+PointerAlignment: Right
+
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+AllowShortBlocksOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Includes: keep the order the author wrote (the codebase mixes "" and <>
+# in non-trivial ways for STM32 driver headers; don't reshuffle).
+SortIncludes: false
+
+SpaceAfterCStyleCast: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpacesBeforeTrailingComments: 1
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# Don't reflow comments -- preserves Doxygen banners.
+ReflowComments: false
+
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+
+Standard: c++03  # C-only codebase; this only affects how clang-format parses
