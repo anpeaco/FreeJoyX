@@ -1,0 +1,42 @@
+; EditorConfig — captures the inherited firmware style.
+; https://editorconfig.org
+;
+; This codebase is a fork of github.com/FreeJoy-Team/FreeJoy. The upstream
+; convention is tab-indented C with Allman braces. Do NOT switch existing
+; files to spaces -- it would create perpetual merge friction with upstream.
+
+root = true
+
+[*]
+charset                  = utf-8
+end_of_line              = lf
+insert_final_newline     = true
+trim_trailing_whitespace = true
+
+[*.{c,h}]
+indent_style             = tab
+indent_size              = 4
+tab_width                = 4
+
+[*.{md,markdown}]
+indent_style             = space
+indent_size              = 2
+trim_trailing_whitespace = false  ; two-trailing-spaces = hard line break
+
+[Makefile*]
+indent_style             = tab
+
+[*.mk]
+indent_style             = tab
+
+[*.{S,s}]
+indent_style             = tab
+indent_size              = 8
+
+[*.{ld,sct}]
+indent_style             = space
+indent_size              = 2
+
+[*.{json,yml,yaml}]
+indent_style             = space
+indent_size              = 2
