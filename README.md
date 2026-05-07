@@ -11,12 +11,12 @@ FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a w
 
 ## Supported boards
 
-| Target | MCU | Driver layer | USB stack | USB composition |
-|---|---|---|---|---|
-| `f103` (BluePill) | STM32F103C8T6 | StdPeriph | USB-FS-Device | Joy HID + Cfg HID + CDC ACM |
-| `f411` (WeAct BlackPill V3.x) | STM32F411CEU6 | STM32 LL (+ HAL flash driver) | ST USB Device Library | Joy HID + Cfg HID + CDC ACM (Phase 4E) |
+| Target | MCU | Driver layer | USB stack |
+|---|---|---|---|
+| `f103` (BluePill) | STM32F103C8T6 | StdPeriph | USB-FS-Device |
+| `f411` (WeAct BlackPill V3.x) | STM32F411CEU6 | STM32 LL (+ HAL flash driver) | ST USB Device Library |
 
-Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes. Wire format is currently **v1.7.8** (`FIRMWARE_VERSION 0x1780`). The CDC ACM interface is the SimHub channel — F103 has shipped this since upstream; F411 gained it in Phase 4E (CDC notification endpoint omitted because OTG-FS only has 4 EP slots, but Linux/Windows/macOS all bind the device fine without it).
+Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes. Wire format is currently **v1.7.8** (`FIRMWARE_VERSION 0x1780`).
 
 ## Getting started
 

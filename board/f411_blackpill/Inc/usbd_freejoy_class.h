@@ -1,24 +1,19 @@
 /**
   ******************************************************************************
   * @file    usbd_freejoy_class.h
-  * @brief   F411 HID+HID+CDC composite class for FreeJoy (Phase 4E).
+  * @brief   F411 dual-HID composite class for FreeJoy (Phase 4F).
   *
-  * Custom USBD_ClassTypeDef implementation that owns four interfaces:
+  * Custom USBD_ClassTypeDef implementation that owns two HID interfaces:
   *
   *   Interface 0 (Joystick HID)        EP1 IN  — REPORT_ID 1
   *   Interface 1 (Configurator HID)    EP2 IN  — REPORT_IDs 2, 3, 5
   *                                     EP2 OUT — REPORT_IDs 4, 5, 6
-  *   Interface 2 (CDC Communication)   no endpoints (notification omitted
-  *                                     to fit F411 OTG-FS's 4-EP budget;
-  *                                     see Phase 4E plan, Option A)
-  *   Interface 3 (CDC Data)            EP3 IN  — bulk to host (SimHub TX)
-  *                                     EP3 OUT — bulk from host (SimHub RX)
   *
   * Cube USBD's USBD_HandleTypeDef holds a single `pClass` pointer, so we
-  * cannot register multiple class instances. This class is a focused
-  * composite dispatcher that routes Setup / DataIn / DataOut by interface
-  * number and endpoint number, internally maintaining separate state for
-  * each interface.
+  * cannot register two `USBD_CUSTOM_HID_CLASS` instances. This class is
+  * a focused composite dispatcher that routes Setup / DataIn / DataOut
+  * by interface number and endpoint number, internally maintaining
+  * separate state for each interface.
   *
   * Bootloader stays on stock Cube CustomHID (single interface) — its
   * makefile excludes `usbd_freejoy_class.c` from the source list and
@@ -81,21 +76,6 @@ typedef struct {
 	uint8_t             set_report_pending;
 	uint8_t             set_report_target_iface;
 	uint8_t             ep2_out_buf[FREEJOY_OUTREPORT_BUF_SIZE];
-
-	/* CDC state (Phase 4E). Mirrors F103's CDC_Send_DATA / EP4_OUT_Callback
-	 * flow from application/Src/usb_endp.c. */
-	FreeJoy_HidState_t  cdc_in_state;          /* EP3 IN busy/idle */
-	uint8_t             cdc_rx_armed;          /* EP3 OUT receive in flight */
-	uint8_t             set_line_coding_pending;
-	uint8_t             cdc_line_coding[CDC_LINE_CODING_LEN];
-
-	/* Static TX/RX buffers -- per memory note
-	 * (project_f411_async_fifo_stack_buffer.md), buffers passed to
-	 * USBD_LL_Transmit MUST be persistent. The HAL writes the FIFO
-	 * asynchronously from the TXFE IRQ; stack buffers go out of scope
-	 * before the FIFO load runs. */
-	uint8_t             cdc_tx_buf[FREEJOY_CDC_DATA_SIZE];
-	uint8_t             cdc_rx_buf[FREEJOY_CDC_DATA_SIZE];
 } USBD_FreeJoy_HandleTypeDef;
 
 /* Class instance — register with USBD_RegisterClass(). */
@@ -118,22 +98,6 @@ uint8_t USBD_FreeJoy_SendCfgReport(USBD_HandleTypeDef *pdev,
  * normally don't need this -- it stays exported only for parity with the
  * pre-Phase-4F shape that called it from `FreeJoy_HID_OutEvent`. */
 uint8_t USBD_FreeJoy_ReceivePacket(USBD_HandleTypeDef *pdev);
-
-/* Send a CDC bulk packet on EP3 IN. Returns -1 on success (queued), 0
- * on BUSY -- F103's CDC_Send_DATA inverted-return convention preserved
- * because callers (application/Src/simhub.c::WriteLine) ignore the
- * return value but the convention is documented in F103's usb_endp.c.
- * Length must be < FREEJOY_CDC_DATA_SIZE (64) -- packets are not
- * fragmented at this layer. */
-int8_t USBD_FreeJoy_SendCdcData(USBD_HandleTypeDef *pdev,
-                                uint8_t *data, uint8_t len);
-
-/* Re-arm EP3 OUT receive if the SimHub ring buffer has room. The
- * composite class re-arms inline from DataOut whenever space allows;
- * this exported helper is for the polled path (simhub.c calls
- * SH_ProcessEndpData from the main loop while it waits for bytes,
- * which lets us recover after the ring drains via SH_Read). */
-void USBD_FreeJoy_RearmCdcReceive(USBD_HandleTypeDef *pdev);
 
 /* OutEvent for the configurator interface, defined in usbd_freejoy_if.c.
  * Called from the composite class's DataOut path with the 64-byte EP2

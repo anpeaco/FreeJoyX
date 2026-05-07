@@ -41,20 +41,12 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 
-/* App build is HID + HID + CDC composite (Phase 4E): 4 interfaces.
- *   Interface 0 — Joystick HID
- *   Interface 1 — Configurator HID
- *   Interface 2 — CDC Communication Class (no endpoints; see Phase 4E
- *                 plan, Option A — F411 OTG-FS doesn't have a 5th IN
- *                 slot for CDC notification, so we omit it. Linux
- *                 cdc-acm + Windows usbser.sys + macOS IOUSBHost all
- *                 accept bNumEndpoints=0 here.)
- *   Interface 3 — CDC Data Class (EP3 IN + EP3 OUT bulk)
- * Bootloader keeps the stock single-CustomHID layout (1 interface). */
+/* App build is dual-HID composite: 2 interfaces. Bootloader keeps the
+ * stock single-CustomHID layout (1 interface). */
 #ifdef BOOTLOADER
 #define USBD_MAX_NUM_INTERFACES                     1U
 #else
-#define USBD_MAX_NUM_INTERFACES                     4U
+#define USBD_MAX_NUM_INTERFACES                     2U
 #endif
 #define USBD_MAX_NUM_CONFIGURATION                  1U
 #define USBD_MAX_STR_DESC_SIZ                       0x100U
@@ -132,26 +124,6 @@ extern "C" {
  * exactly, since Phase 4F ports F103's descriptors verbatim. */
 #define FREEJOY_JOY_REPORT_DESC_SIZE                86U
 #define FREEJOY_CFG_REPORT_DESC_SIZE                106U
-
-/* CDC for SimHub (Phase 4E). Bulk data on EP3 IN/OUT. CDC notification
- * EP omitted -- see USBD_MAX_NUM_INTERFACES comment above for why.
- *
- * EP3 IN TXFIFO is sized for 2x 64-byte bulk packets pipelined; RX
- * shared FIFO covers EP2 OUT + EP3 OUT (sizing details in usbd_conf.c).
- *
- * Class requests handled in usbd_freejoy_class.c::USBD_FreeJoy_Setup
- * for interface 2 (CDC Communication): GET_LINE_CODING,
- * SET_LINE_CODING, SET_CONTROL_LINE_STATE, SEND_BREAK. */
-#define FREEJOY_CDC_DATA_EPIN_ADDR                  0x83U  /* EP3 IN */
-#define FREEJOY_CDC_DATA_EPOUT_ADDR                 0x03U  /* EP3 OUT */
-#define FREEJOY_CDC_DATA_SIZE                       0x40U  /* 64-byte bulk */
-
-/* CDC class request codes (USB CDC PSTN spec §6.3.10 / §6.3.12). */
-#define CDC_SET_LINE_CODING                         0x20U
-#define CDC_GET_LINE_CODING                         0x21U
-#define CDC_SET_CONTROL_LINE_STATE                  0x22U
-#define CDC_SEND_BREAK                              0x23U
-#define CDC_LINE_CODING_LEN                         7U     /* dwDTERate (4) + bCharFormat + bParityType + bDataBits */
 
 /* Static memory aliases -- USBD_static_malloc allocates from a pool
  * sized for one class handle instance. Bootloader allocates a
