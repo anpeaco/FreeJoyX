@@ -27,8 +27,9 @@ ColumnLimit:     100
 # Allman braces -- opening brace on its own line everywhere.
 BreakBeforeBraces: Allman
 
-# Pointers bind to the variable: `dev_config_t *p_dev_config`
-PointerAlignment: Right
+# Inherited convention has the pointer star floating: `dev_config_t * p_dev_config`.
+# Every function in buttons.c uses this form -- match it.
+PointerAlignment: Middle
 
 AlignAfterOpenBracket: Align
 AlignConsecutiveAssignments: false
@@ -47,7 +48,9 @@ SortIncludes: false
 
 SpaceAfterCStyleCast: true
 SpaceBeforeAssignmentOperators: true
-SpaceBeforeParens: ControlStatements
+# Upstream puts a space before the open paren even on function declarations
+# (`void ButtonsDebounceProcess (...)`). Match it.
+SpaceBeforeParens: Always
 SpacesBeforeTrailingComments: 1
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
@@ -58,4 +61,4 @@ ReflowComments: false
 KeepEmptyLinesAtTheStartOfBlocks: false
 MaxEmptyLinesToKeep: 1
 
-Standard: c++03  # C-only codebase; this only affects how clang-format parses
+Standard: Auto   # C-only codebase; Auto avoids forcing a C++ parsing mode

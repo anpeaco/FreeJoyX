@@ -23,7 +23,8 @@ existing tree.
 | Indent | Tabs, 4 columns wide |
 | Braces (functions, control flow) | Allman — opening brace on its own line |
 | Braces (typedefs, structs, enums, initializers) | K&R — opening brace inline |
-| Pointer alignment | Right (`dev_config_t *p_dev_config`) |
+| Pointer alignment | Middle (`dev_config_t * p_dev_config`) — matches upstream |
+| Space before open paren | Always — including function names: `void ButtonsDebounceProcess (...)` |
 | Column limit | 100 (soft); tabular data may exceed |
 | Trailing newline | Required |
 | Line endings | LF |
