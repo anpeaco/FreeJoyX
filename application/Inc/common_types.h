@@ -618,6 +618,14 @@ typedef struct
 	uint8_t							phy_button_data[MAX_BUTTONS_NUM/8];
 	uint8_t							log_button_data[MAX_BUTTONS_NUM/8];
 	uint8_t							shift_button_data;
+	/* Issue anpeaco/FreeJoyX#18 follow-on: device reports its project
+	 * version (FREEJOYX_VERSION) live so the configurator can show it
+	 * in the sidebar -- decoupled from the wire-format compat token
+	 * (firmware_version above). Single-digit per-component cap (0..9);
+	 * revisit if/when components cross 10. */
+	uint8_t							freejoyx_version_major;
+	uint8_t							freejoyx_version_minor;
+	uint8_t							freejoyx_version_patch;
 
 } params_report_t;
 

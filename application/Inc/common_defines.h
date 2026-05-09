@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x1780			// v1.7.8 (issue anpeaco/FreeJoyX#1: shift modifiers expanded from 5 to 8. shift_config[8] replaces shift_config[5] in dev_config_t, and button_t.shift_modificator widens from :3 to :4 so values 1..8 fit. The :3->:4 widen overflows the prior 8-bit bitfield byte into a second storage unit, growing each button_t by 1 byte (128 buttons * 1 byte = 128B), plus shift_config grows +3 bytes; total dev_config_t growth +131 bytes. 0x1780 crosses the &0xFFF0 mask boundary so the version-mismatch check at main.c:67 fires once on first flash and factory-resets across the layout change.)
+#define FIRMWARE_VERSION					0x1790			// v1.7.9 (issue anpeaco/FreeJoyX#18 follow-on: params_report_t gains freejoyx_version_major/minor/patch so the configurator can show the device's actual project version in the sidebar -- decouples from the wire-format token. dev_config_t shape unchanged; only params_report_t grew (+3 bytes payload, +2 bytes struct due to alignment). 0x1790 crosses the &0xFFF0 mask boundary so existing devices factory-reset on first flash; the v1780 forward migrator is a near-no-op since dev_config_t is byte-identical.)
 
 /* FREEJOYX_VERSION is the user-facing project version (semver). It's
  * decoupled from FIRMWARE_VERSION above -- FIRMWARE_VERSION is the
@@ -25,7 +25,7 @@
  * 1.0.0 when the project is judged stable. See issue anpeaco/FreeJoyX#18. */
 #define FREEJOYX_VERSION_MAJOR              0
 #define FREEJOYX_VERSION_MINOR              0
-#define FREEJOYX_VERSION_PATCH              0
+#define FREEJOYX_VERSION_PATCH              1
 #define FREEJOYX_VER_STR_HELPER(x)          #x
 #define FREEJOYX_VER_STR(x)                 FREEJOYX_VER_STR_HELPER(x)
 #define FREEJOYX_VERSION                    FREEJOYX_VER_STR(FREEJOYX_VERSION_MAJOR) "." \
@@ -38,7 +38,7 @@
  * drifts without bumping these. Sister rule lives in CLAUDE.md
  * ("Wire-format archival rule"). */
 #define FREEJOY_DEV_CONFIG_SIZE				1580
-#define FREEJOY_PARAMS_REPORT_SIZE			70
+#define FREEJOY_PARAMS_REPORT_SIZE			72
 
 /* Maximum number of shift modifiers. v1.7.8: bumped 5 -> 8 to match
  * button_t.shift_modificator's widened :4 field (encodes 0=none, 1..8).

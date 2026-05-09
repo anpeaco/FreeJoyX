@@ -375,6 +375,12 @@ void Board_TickISR(void)
 			params_report.firmware_version = FIRMWARE_VERSION;
 			params_report.board_id = BOARD_ID;
 			params_report.reserved_layout = 0;
+			/* Surface the project semver so the configurator's sidebar
+			 * can show "Version: X.Y.Z" alongside the wire-format token.
+			 * Issue anpeaco/FreeJoyX#18 follow-on. */
+			params_report.freejoyx_version_major = FREEJOYX_VERSION_MAJOR;
+			params_report.freejoyx_version_minor = FREEJOYX_VERSION_MINOR;
+			params_report.freejoyx_version_patch = FREEJOYX_VERSION_PATCH;
 			memcpy(params_report.axis_data, joy_report.axis_data,
 			       sizeof(params_report.axis_data));
 
