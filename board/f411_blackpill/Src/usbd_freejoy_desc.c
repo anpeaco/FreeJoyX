@@ -38,7 +38,17 @@ extern dev_config_t dev_config;
 #define USBD_LANGID_STRING              0x0409  /* U.S. English */
 #define USBD_SIZ_STRING_SERIAL          0x1A    /* 2-byte header + 12 chars * 2 (UTF-16) */
 #define USBD_MANUFACTURER_STRING        "FreeJoyX"
+/* In the bootloader build the iProduct identifies the firmware as
+ * "FreeJoyX Flasher" so the configurator's flasher-detection filter
+ * (HidDevice::FLASHER_PROD_STR) recognises the F411 bootloader the
+ * same way it recognises the F103 one. The application build keeps
+ * "FreeJoyX HID" as the fallback when dev_config.device_name is
+ * empty (factory-reset / fresh-boot). */
+#ifdef BOOTLOADER
+#define USBD_PRODUCT_FS_STRING          "FreeJoyX Flasher"
+#else
 #define USBD_PRODUCT_FS_STRING          "FreeJoyX HID"
+#endif
 #define USBD_CONFIGURATION_FS_STRING    "FreeJoyX Config"
 #define USBD_INTERFACE_FS_STRING        "FreeJoyX Interface"
 

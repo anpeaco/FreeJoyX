@@ -60,7 +60,7 @@
 #define CUSTOMHID_SIZ_REPORT_DESC               25
 #define CUSTOMHID_SIZ_STRING_LANGID             4
 #define CUSTOMHID_SIZ_STRING_VENDOR             38
-#define CUSTOMHID_SIZ_STRING_PRODUCT            32
+#define CUSTOMHID_SIZ_STRING_PRODUCT            34	/* "FreeJoyX Flasher" = 16 chars * 2 (UTF-16) + 2-byte header. Bumped from 32 ("FreeJoy Flasher") in the FreeJoyX-distinction pass. */
 #define CUSTOMHID_SIZ_STRING_SERIAL             26
 
 #define STANDARD_ENDPOINT_DESC_SIZE             0x09

@@ -182,11 +182,13 @@ uint8_t CustomHID_StringVendor[CUSTOMHID_SIZ_STRING_VENDOR] =
 
 uint8_t CustomHID_StringProduct[CUSTOMHID_SIZ_STRING_PRODUCT] =
   {
-    CUSTOMHID_SIZ_STRING_PRODUCT,          /* bLength */
+    CUSTOMHID_SIZ_STRING_PRODUCT,      /* bLength */
     USB_STRING_DESCRIPTOR_TYPE,        /* bDescriptorType */
-    'F', 0, 'r', 0, 'e', 0, 'e', 0, 'J', 0, 'o', 0, 'y', 0,
-    ' ', 0, 'F', 0, 'l', 0, 'a', 0, 's', 0, 'h', 0, 'e', 0,
-    'r', 0
+    /* "FreeJoyX Flasher" -- distinct from upstream FreeJoy's
+     * "FreeJoy Flasher" so the configurator's flasher detection can
+     * tell which fork's bootloader is talking. */
+    'F', 0, 'r', 0, 'e', 0, 'e', 0, 'J', 0, 'o', 0, 'y', 0, 'X', 0,
+    ' ', 0, 'F', 0, 'l', 0, 'a', 0, 's', 0, 'h', 0, 'e', 0, 'r', 0
   };
 uint8_t CustomHID_StringSerial[CUSTOMHID_SIZ_STRING_SERIAL] =
   {
