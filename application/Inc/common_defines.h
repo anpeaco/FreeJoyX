@@ -13,6 +13,25 @@
 
 #define FIRMWARE_VERSION					0x1780			// v1.7.8 (issue anpeaco/FreeJoyX#1: shift modifiers expanded from 5 to 8. shift_config[8] replaces shift_config[5] in dev_config_t, and button_t.shift_modificator widens from :3 to :4 so values 1..8 fit. The :3->:4 widen overflows the prior 8-bit bitfield byte into a second storage unit, growing each button_t by 1 byte (128 buttons * 1 byte = 128B), plus shift_config grows +3 bytes; total dev_config_t growth +131 bytes. 0x1780 crosses the &0xFFF0 mask boundary so the version-mismatch check at main.c:67 fires once on first flash and factory-resets across the layout change.)
 
+/* FREEJOYX_VERSION is the user-facing project version (semver). It's
+ * decoupled from FIRMWARE_VERSION above -- FIRMWARE_VERSION is the
+ * wire-format compat key (drives the &0xFFF0 mismatch check), while
+ * FREEJOYX_VERSION is what appears in the configurator title bar, the
+ * device's USB device_name on factory reset, and release artefact
+ * filenames. Both bump together in coordinated releases; configurator-
+ * only or firmware-only fixes bump the patch number alone.
+ *
+ * Until the first formal approved release we stay on major 0. Move to
+ * 1.0.0 when the project is judged stable. See issue anpeaco/FreeJoyX#18. */
+#define FREEJOYX_VERSION_MAJOR              0
+#define FREEJOYX_VERSION_MINOR              0
+#define FREEJOYX_VERSION_PATCH              0
+#define FREEJOYX_VER_STR_HELPER(x)          #x
+#define FREEJOYX_VER_STR(x)                 FREEJOYX_VER_STR_HELPER(x)
+#define FREEJOYX_VERSION                    FREEJOYX_VER_STR(FREEJOYX_VERSION_MAJOR) "." \
+                                            FREEJOYX_VER_STR(FREEJOYX_VERSION_MINOR) "." \
+                                            FREEJOYX_VER_STR(FREEJOYX_VERSION_PATCH)
+
 /* Wire-format size pins. Must move in lockstep with FIRMWARE_VERSION on
  * any change to dev_config_t / params_report_t. The static_assert lines
  * at the bottom of common_types.h fail the build if the struct shape

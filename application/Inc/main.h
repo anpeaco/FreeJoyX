@@ -21,9 +21,10 @@ static const dev_config_t init_config =
 	.firmware_version = FIRMWARE_VERSION,	// auto-syncs with the compiled version. Upstream FreeJoy hardcoded 0x1731 here ("do not change"), which broke every cycle that bumps FIRMWARE_VERSION across the &0xFFF0 mask boundary -- DevConfigSet writes init_config as-is, so flash got 0x1731 forever and the version-mismatch check at main.c:64 then fired on every boot, wiping user config on every power cycle.
 	.board_id = BOARD_ID,					// Phase 7: tag factory config with the running board's identity so cross-board writes are rejected. BOARD_ID resolves via board/<chip>/Inc/board_config.h.
 	/* Default device name shown in the OS dispatcher. Auto-syncs to
-	   FIRMWARE_VERSION so a factory-reset device reports its actual
-	   firmware version rather than the upstream-inherited "FreeJoy v1.7.2"
-	   that lingered through every bump. The user can rename via the
+	   FREEJOYX_VERSION (semver) so a factory-reset device reports the
+	   project's user-facing version, not the wire-format hex it used
+	   to. Single-digit per-component cap (0..9) is fine until we cross
+	   double digits; revisit then. The user can rename via the
 	   configurator; that stored name then lives in dev_config.device_name
 	   on flash and overrides this default. */
 	.device_name[0] =  'F',
@@ -35,12 +36,12 @@ static const dev_config_t init_config =
 	.device_name[6] =  'y',
 	.device_name[7] =  'X',
 	.device_name[8] =  ' ',
-	.device_name[9] =  'v',
-	.device_name[10] = '0' + ((FIRMWARE_VERSION >> 12) & 0xF),
-	.device_name[11] = '.',
-	.device_name[12] = '0' + ((FIRMWARE_VERSION >>  8) & 0xF),
-	.device_name[13] = '.',
-	.device_name[14] = '0' + ((FIRMWARE_VERSION >>  4) & 0xF),
+	.device_name[9] =  '0' + FREEJOYX_VERSION_MAJOR,
+	.device_name[10] = '.',
+	.device_name[11] = '0' + FREEJOYX_VERSION_MINOR,
+	.device_name[12] = '.',
+	.device_name[13] = '0' + FREEJOYX_VERSION_PATCH,
+	.device_name[14] = 0,
 	.device_name[15] = 0,
 	.device_name[16] = 0,
 	.device_name[17] = 0,

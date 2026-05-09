@@ -2,37 +2,29 @@
 # defaults to f103 so a bare `make` keeps working as before.
 TARGET ?= f103
 
-# Wire-format version extracted from the firmware's common_defines.h
-# header. Used to name versioned firmware artefacts so multiple builds
-# can coexist in the configurator's firmware/ folder without colliding.
-# FW_VERSION is the raw 4-hex-digit value (e.g. "1770"); FW_TAG is the
-# user-facing rendering (e.g. "v1.7.7b0") that matches what the
-# configurator shows in its Firmware row.
-FW_VERSION := $(shell grep -E "^\#define FIRMWARE_VERSION" \
-                       ../application/Inc/common_defines.h | \
-                  awk '{print $$3}' | sed 's/0x//' | head -c 4)
-FW_TAG := v$(shell echo $(FW_VERSION) | sed 's/\(.\)\(.\)\(.\)\(.\)/\1.\2.\3b\4/')
+# Project semver (FREEJOYX_VERSION) extracted from the synced
+# common_defines.h header. Drives the user-facing version on the
+# configurator title bar AND the firmware artefact filenames -- one
+# answer to "what version is this", regardless of whether someone
+# means firmware or configurator. Issue anpeaco/FreeJoyX#18.
+#
+# FIRMWARE_VERSION (the wire-format hex key) is no longer the source
+# for filenames; it stays internal as the &0xFFF0 shape-compat token.
+FREEJOYX_VER_MAJOR := $(shell grep -E "^\#define[[:space:]]+FREEJOYX_VERSION_MAJOR" \
+                              ../application/Inc/common_defines.h | awk '{print $$3}')
+FREEJOYX_VER_MINOR := $(shell grep -E "^\#define[[:space:]]+FREEJOYX_VERSION_MINOR" \
+                              ../application/Inc/common_defines.h | awk '{print $$3}')
+FREEJOYX_VER_PATCH := $(shell grep -E "^\#define[[:space:]]+FREEJOYX_VERSION_PATCH" \
+                              ../application/Inc/common_defines.h | awk '{print $$3}')
+FREEJOYX_VERSION := $(FREEJOYX_VER_MAJOR).$(FREEJOYX_VER_MINOR).$(FREEJOYX_VER_PATCH)
 
-# RELEASE_VERSION (optional override). When unset, artefacts are named
-# after FW_TAG so the filename matches the firmware version shown in
-# the configurator's Firmware row -- e.g. FIRMWARE_VERSION 0x1770
-# produces "freejoyx-f103-app-v1.7.7b0.bin", and the device's UI also
-# reports v1.7.7b0. No conflicting numbering for users to reconcile.
-#
-# When set (typically to a GitHub release tag like v1.7.7b0 or a fix
-# variant like v1.7.7b0-r1), artefacts are named after the override
-# instead.
-#
-# Convention:
-#   RELEASE_VERSION unset             -> freejoyx-f103-app-v1.7.7b0.bin
-#                                        (matches UI; default for
-#                                         dev builds and tagged releases
-#                                         that don't need a suffix)
-#   RELEASE_VERSION=v1.7.7b0-r1       -> freejoyx-f103-app-v1.7.7b0-r1.bin
-#                                        (release-fix without a wire-
-#                                         format bump -- bug-fix only)
+# RELEASE_VERSION (optional override). Default = "v<FREEJOYX_VERSION>",
+# e.g. "v0.0.0". Set explicitly when packaging a hot-fix release that
+# doesn't bump FREEJOYX_VERSION:
+#   RELEASE_VERSION=v0.0.0-rc1
+#   RELEASE_VERSION=v0.0.0-r1
 RELEASE_VERSION ?=
-NAME_VERSION := $(if $(RELEASE_VERSION),$(RELEASE_VERSION),$(FW_TAG))
+NAME_VERSION := $(if $(RELEASE_VERSION),$(RELEASE_VERSION),v$(FREEJOYX_VERSION))
 
 # CONFX_FIRMWARE_DIR (optional): absolute path to the configurator's
 # <exe>/firmware/ folder. When set, install-firmware copies versioned
