@@ -1,5 +1,8 @@
 # FreeJoyX
 
+[![Firmware build](https://github.com/anpeaco/FreeJoyX/actions/workflows/firmware.yml/badge.svg)](https://github.com/anpeaco/FreeJoyX/actions/workflows/firmware.yml)
+[![Wire-format header sync](https://github.com/anpeaco/FreeJoyX/actions/workflows/header-sync.yml/badge.svg)](https://github.com/anpeaco/FreeJoyX/actions/workflows/header-sync.yml)
+
 **STILL IN INITIAL DEVELOPMENT STAGES**
 
 *Repo is up for feedback and suggestions, I'll update this when it's ready to try.*
@@ -97,6 +100,22 @@ make release RELEASE_VERSION=v1.7.8
 ```
 
 Output binaries are named `freejoyx-<board>-<app|boot>-<version>.bin` so the configurator's flasher picks the correct image per connected board.
+
+## Continuous integration
+
+Three GitHub Actions workflows run on every push:
+
+- **`firmware.yml`** — matrix-builds both `f103` and `f411` (app + boot) on Ubuntu with `gcc-arm-none-eabi`, uploads versioned `.bin` artifacts.
+- **`header-sync.yml`** — clones [`anpeaco/FreeJoyXConfiguratorQt`](https://github.com/anpeaco/FreeJoyXConfiguratorQt) as a sibling and diffs `common_types.h` + `common_defines.h` after stripping comments and whitespace. Catches wire-format drift between firmware and configurator. Firmware-only sections are wrapped in `/* SYNC_SKIP_BEGIN ... SYNC_SKIP_END */` markers so the check ignores them.
+- **`release.yml`** — on `v*` tag push, runs `make release RELEASE_VERSION=<tag>` and publishes the four binaries (F103 app + boot, F411 app + boot) to a GitHub Release with auto-generated notes.
+
+To cut a release locally:
+
+```bash
+git tag v0.0.3
+git push origin v0.0.3
+# Release workflow builds + publishes the binaries automatically.
+```
 
 ## Contributing
 

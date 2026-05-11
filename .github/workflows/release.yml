@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write  # required by softprops/action-gh-release to create the Release
+
+jobs:
+  release:
+    name: Build and publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Build release binaries (F103 + F411, app + boot)
+        working-directory: armgcc
+        run: make release RELEASE_VERSION=${{ github.ref_name }}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            armgcc/build/f103/install/*.bin
+            armgcc/build/f411/install/*.bin
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          draft: false
