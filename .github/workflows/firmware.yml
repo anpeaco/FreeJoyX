@@ -15,7 +15,7 @@ jobs:
         target: [f103, f411]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install ARM toolchain
         run: |
@@ -32,7 +32,7 @@ jobs:
         run: make TARGET=${{ matrix.target }} install-firmware
 
       - name: Upload firmware binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.target }}
           path: armgcc/build/${{ matrix.target }}/install/*.bin
