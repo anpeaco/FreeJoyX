@@ -106,7 +106,7 @@ Output binaries are named `freejoyx-<board>-<app|boot>-<version>.bin` so the con
 Three GitHub Actions workflows run on every push:
 
 - **`firmware.yml`** — matrix-builds both `f103` and `f411` (app + boot) on Ubuntu with `gcc-arm-none-eabi`, uploads versioned `.bin` artifacts.
-- **`header-sync.yml`** — clones [`anpeaco/FreeJoyXConfiguratorQt`](https://github.com/anpeaco/FreeJoyXConfiguratorQt) as a sibling and diffs `common_types.h` + `common_defines.h` after stripping comments and whitespace. Catches wire-format drift between firmware and configurator. Firmware-only sections are wrapped in `/* SYNC_SKIP_BEGIN ... SYNC_SKIP_END */` markers so the check ignores them.
+- **`header-sync.yml`** — clones [`anpeaco/FreeJoyXConfiguratorQt`](https://github.com/anpeaco/FreeJoyXConfiguratorQt) as a sibling and diffs `common_types.h` + `common_defines.h` after stripping comments and whitespace. Catches wire-format drift between firmware and configurator. Firmware-only sections are wrapped in `/* SYNC_SKIP_BEGIN ... SYNC_SKIP_END */` markers so the check ignores them. A mirror workflow runs in the configurator repo on its own pushes; both sides catch drift independently.
 - **`release.yml`** — on `v*` tag push, runs `make release RELEASE_VERSION=<tag>` and publishes the four binaries (F103 app + boot, F411 app + boot) to a GitHub Release with auto-generated notes.
 
 To cut a release locally:
