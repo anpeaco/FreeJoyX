@@ -29,6 +29,11 @@ jobs:
 
           def normalize(path):
               text = pathlib.Path(path).read_text()
+              # Strip content marked firmware-only (or otherwise sync-exempt).
+              # Markers: /* SYNC_SKIP_BEGIN [description] */ ... /* SYNC_SKIP_END [description] */
+              text = re.sub(
+                  r"/\*\s*SYNC_SKIP_BEGIN\b.*?SYNC_SKIP_END\b.*?\*/",
+                  "", text, flags=re.DOTALL)
               # Strip C-style /* ... */ block comments (multiline)
               text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
               # Strip // line comments

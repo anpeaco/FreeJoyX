@@ -37,10 +37,10 @@ void LEDs_LogicalProcess (dev_config_t * p_dev_config)
 	for (uint8_t i=0; i<MAX_LEDS_NUM; i++)
 	{
 		input_num = p_dev_config->leds[i].input_num;
-		if (input_num >= 0 || input_num == SOURCE_EXTERNAL)
+		if (input_num >= 0 || input_num == SOURCE_HOST)
 		{
 			uint8_t state;
-			if (input_num == SOURCE_EXTERNAL)
+			if (input_num == SOURCE_HOST)
 			{
 				state =  (external_led_data.leds_state >> i) & 1;
 			}

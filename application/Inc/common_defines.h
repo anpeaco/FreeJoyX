@@ -74,7 +74,9 @@
 // Flash storage layout (MAX_PAGE / FLASH_PAGE_SIZE / CONFIG_ADDR / etc.)
 // moved to board/<chip>/Inc/board_config.h as part of the F411 BSP-seam
 // refactor. The constants are inherently chip-specific.
+/* SYNC_SKIP_BEGIN */
 #include "board_config.h"
+/* SYNC_SKIP_END */
 
 
 enum

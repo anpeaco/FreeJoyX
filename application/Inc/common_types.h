@@ -83,10 +83,10 @@ typedef struct
 
 enum
 {
+	SOURCE_HOST = -4,
 	SOURCE_ENCODER = -3,
 	SOURCE_I2C = -2,
 	SOURCE_NO = -1,
-	SOURCE_EXTERNAL = -4,
 };
 typedef int8_t axis_source_t;
 
@@ -334,12 +334,14 @@ typedef struct logical_buttons_state_t
 	uint8_t current_state					:1;
 	uint8_t delay_act 						:2;
 
+	/* SYNC_SKIP_BEGIN -- firmware-only DOUBLE_TAP runtime tracking; not in dev_config_t */
 	// DOUBLE_TAP: 0 = idle, 1 = first tap observed (waiting for second within
 	// window), 2 = second tap captured (mirroring physical until release).
 	// Unused for non-DOUBLE_TAP slots. LONG_PRESS reuses time_last for its
 	// rising-edge timestamp.
 	uint8_t tap_count							:2;
 	int32_t first_tap_ms;	// timestamp of first rising edge in current DOUBLE_TAP window
+	/* SYNC_SKIP_END */
 } logical_buttons_state_t;
 
 
@@ -590,10 +592,12 @@ typedef struct
 
 
 /******************** EXTERNAL LED DATA **********************/
+/* SYNC_SKIP_BEGIN -- firmware-only runtime state for host-driven LEDs */
 typedef struct
 {
 	uint32_t 						leds_state;		// 24 bits used
 } external_led_data_t;
+/* SYNC_SKIP_END */
 
 
 /******************** HID REPORT CONFIGURATION **********************/
@@ -651,10 +655,12 @@ typedef struct
  * either shape changes (field add/remove, padding shift across toolchains)
  * without an intentional bump of FREEJOY_*_SIZE in common_defines.h, the
  * build fails here instead of silently corrupting config R/W at runtime. */
+/* SYNC_SKIP_BEGIN -- each side spells the static_assert in its own language (C vs C++); the size constants are what's actually mirrored */
 _Static_assert(sizeof(dev_config_t)    == FREEJOY_DEV_CONFIG_SIZE,
 	"dev_config_t size drifted -- bump FIRMWARE_VERSION, archive the old shape (legacy_types.h + legacy_migrator.cpp), and update FREEJOY_DEV_CONFIG_SIZE in common_defines.h. See CLAUDE.md wire-format archival rule.");
 _Static_assert(sizeof(params_report_t) == FREEJOY_PARAMS_REPORT_SIZE,
 	"params_report_t size drifted -- bump FIRMWARE_VERSION and update FREEJOY_PARAMS_REPORT_SIZE in common_defines.h.");
+/* SYNC_SKIP_END */
 
 
 #endif 	/* __COMMON_TYPES_H__ */
