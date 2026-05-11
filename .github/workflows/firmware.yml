@@ -1,0 +1,40 @@
+name: Firmware build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [f103, f411]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Print toolchain versions
+        run: |
+          arm-none-eabi-gcc --version
+          make --version | head -1
+
+      - name: Build and stage ${{ matrix.target }} (app + boot)
+        working-directory: armgcc
+        run: make TARGET=${{ matrix.target }} install-firmware
+
+      - name: Upload firmware binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.target }}
+          path: armgcc/build/${{ matrix.target }}/install/*.bin
+          if-no-files-found: error
+          retention-days: 30
