@@ -3,6 +3,8 @@
 [![Firmware build](https://github.com/anpeaco/FreeJoyX/actions/workflows/firmware.yml/badge.svg)](https://github.com/anpeaco/FreeJoyX/actions/workflows/firmware.yml)
 [![Wire-format header sync](https://github.com/anpeaco/FreeJoyX/actions/workflows/header-sync.yml/badge.svg)](https://github.com/anpeaco/FreeJoyX/actions/workflows/header-sync.yml)
 
+> **FreeJoyX project:** [Firmware](https://github.com/anpeaco/FreeJoyX) · [Configurator](https://github.com/anpeaco/FreeJoyXConfiguratorQt)
+
 **STILL IN INITIAL DEVELOPMENT STAGES**
 
 *Repo is up for feedback and suggestions, I'll update this when it's ready to try.*
