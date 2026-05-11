@@ -249,7 +249,7 @@ typedef uint8_t button_type_t;
 
 /******************** LOGIC OPERATORS **********************/
 // Operator codes for type=LOGIC slots. Order MUST match the configurator's
-// mirror in FreeJoyConfiguratorQtX/src/common_types.h byte-for-byte.
+// mirror in FreeJoyXConfiguratorQt/src/common_types.h byte-for-byte.
 enum
 {
 	LOGIC_OP_AND = 0,
@@ -488,7 +488,7 @@ typedef struct
 // cycles and translate stale physical_num references through
 // freejoy::toRef / toAbs (see physref.h in the configurator). Layout
 // MUST match the configurator's mirror in
-// FreeJoyConfiguratorQtX/src/common_types.h byte-for-byte.
+// FreeJoyXConfiguratorQt/src/common_types.h byte-for-byte.
 typedef struct phys_breakdown_t
 {
 	uint8_t					matrix;								// matrix-rows * matrix-cols

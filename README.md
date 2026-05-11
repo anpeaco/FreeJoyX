@@ -106,6 +106,6 @@ lockstep rule.
 
 ## FreeJoy Configurator utility
 
-FreeJoyX is paired with [FreeJoyConfiguratorQtX](../FreeJoyConfiguratorQtX) — the matching desktop configurator (forked from [FreeJoyConfiguratorQt](https://github.com/FreeJoy-Team/FreeJoyConfiguratorQt)). The two repos must stay in lockstep: `application/Inc/common_types.h` and `application/Inc/common_defines.h` are kept in manual sync with the configurator's copies on every wire-format change.
+FreeJoyX is paired with [FreeJoyXConfiguratorQt](../FreeJoyXConfiguratorQt) — the matching desktop configurator (forked from [FreeJoyConfiguratorQt](https://github.com/FreeJoy-Team/FreeJoyConfiguratorQt)). The two repos must stay in lockstep: `application/Inc/common_types.h` and `application/Inc/common_defines.h` are kept in manual sync with the configurator's copies on every wire-format change.
 
 <img src="https://github.com/FreeJoy-Team/FreeJoyWiki/blob/master/images/main.jpg" width="800"/>

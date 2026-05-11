@@ -151,7 +151,7 @@ even when upstream introduces a warning we haven't yet absorbed.
 ## Relationship to the configurator
 
 Two headers must stay byte-identical between this repo and
-`FreeJoyConfiguratorQtX`:
+`FreeJoyXConfiguratorQt`:
 
 - `application/Inc/common_types.h`   ↔ `src/common_types.h`
 - `application/Inc/common_defines.h` ↔ `src/common_defines.h`

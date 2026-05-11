@@ -14,7 +14,7 @@ repo root and in the parent project workspace.
    rule"**. Skipping any of the four lockstep items leaves boards in
    the field broken.
 3. Check the GitHub Issues on `anpeaco/FreeJoyX` and
-   `anpeaco/FreeJoyConfiguratorQtX` for related work.
+   `anpeaco/FreeJoyXConfiguratorQt` for related work.
 
 ## Build
 

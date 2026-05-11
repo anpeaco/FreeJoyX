@@ -59,7 +59,7 @@ boot:
 # Usage:
 #   make TARGET=f103 install-firmware
 #   make TARGET=f103 install-firmware RELEASE_VERSION=v0.2.0
-#   make TARGET=f411 install-firmware CONFX_FIRMWARE_DIR=/c/Users/.../FreeJoyConfiguratorQtX/build_phase4a/release/firmware
+#   make TARGET=f411 install-firmware CONFX_FIRMWARE_DIR=/c/Users/.../FreeJoyXConfiguratorQt/build_phase4a/release/firmware
 install-firmware: all
 	mkdir -p $(INSTALL_DIR)
 	cp build/$(TARGET)/app/FreeJoy.bin   $(INSTALL_DIR)/$(NAME_APP)

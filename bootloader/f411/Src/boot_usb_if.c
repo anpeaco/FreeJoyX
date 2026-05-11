@@ -8,10 +8,10 @@
   * configurator's flasher protocol uses REPORT_ID 4 (the local
   * REPORT_ID_FIRMWARE in F103's bootloader -- NB this is NOT the
   * application's REPORT_ID_FIRMWARE = 5; the configurator-side comment
-  * at FreeJoyConfiguratorQtX/src/hiddevice.cpp:18 confirms the bootloader
+  * at FreeJoyXConfiguratorQt/src/hiddevice.cpp:18 confirms the bootloader
   * uses ID 4 for legacy reasons).
   *
-  * Wire protocol (FreeJoyConfiguratorQtX/src/hiddevice.cpp:570-680):
+  * Wire protocol (FreeJoyXConfiguratorQt/src/hiddevice.cpp:570-680):
   *   First packet  [4, 0,0,0, len_lo, len_hi, crc_lo, crc_hi, 0...]
   *                 -> erase app sectors S5/S6/S7
   *                 -> reply [4, 0,1] requesting first body packet
