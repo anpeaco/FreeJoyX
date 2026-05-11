@@ -1,0 +1,66 @@
+name: Wire-format header sync
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    name: Compare common_*.h with configurator
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout firmware
+        uses: actions/checkout@v6
+        with:
+          path: firmware
+
+      - name: Checkout configurator
+        uses: actions/checkout@v6
+        with:
+          repository: anpeaco/FreeJoyXConfiguratorQt
+          path: configurator
+          ref: master
+
+      - name: Compare headers (ignoring comments and whitespace)
+        run: |
+          python3 - <<'PY'
+          import re, sys, pathlib, difflib
+
+          def normalize(path):
+              text = pathlib.Path(path).read_text()
+              # Strip C-style /* ... */ block comments (multiline)
+              text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+              # Strip // line comments
+              text = re.sub(r"//[^\n]*", "", text)
+              # Collapse all whitespace to single spaces
+              text = re.sub(r"\s+", " ", text)
+              return text.strip()
+
+          pairs = [
+              ("firmware/application/Inc/common_types.h",
+               "configurator/src/common_types.h"),
+              ("firmware/application/Inc/common_defines.h",
+               "configurator/src/common_defines.h"),
+          ]
+
+          drift = False
+          for fw, cf in pairs:
+              if normalize(fw) == normalize(cf):
+                  print(f"OK: {fw} matches {cf} (semantic)")
+                  continue
+              drift = True
+              print(f"::error file={fw}::Wire-format drift vs {cf}")
+              # Print first ~20 differing tokens for context
+              a, b = normalize(fw).split(), normalize(cf).split()
+              diff = list(difflib.unified_diff(a, b, lineterm="", n=2))[:25]
+              for line in diff:
+                  print(line)
+
+          if drift:
+              print("\nWire-format archival rule: keep common_types.h and "
+                    "common_defines.h in lockstep across both repos. See "
+                    "CLAUDE.md \"Wire-format archival rule\" + issue "
+                    "anpeaco/FreeJoyX#10.")
+              sys.exit(1)
+          PY
