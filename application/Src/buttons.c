@@ -39,9 +39,9 @@ uint8_t												a2b_last = 0;
 volatile uint8_t							button_mutex = 0;
 
 // Gesture-coordination tables, indexed by physical input number (0..MAX_BUTTONS_NUM-1).
-// gesture_delay_ms[p] = resolved gesture window for physical p, 0 if no LONG_PRESS
+// gesture_delay_ms[p] = resolved gesture window for physical p, 0 if no TAP
 //   or DOUBLE_TAP slot is bound to it. Built once at boot by Gestures_Init().
-// gesture_claimed[p] = 1 once a LONG_PRESS or DOUBLE_TAP has fired in the current
+// gesture_claimed[p] = 1 once a TAP or DOUBLE_TAP has fired in the current
 //   press cycle of physical p; tells sister BUTTON_NORMAL slots to suppress their
 //   delayed press fire.
 // gesture_low_since[p] = millis timestamp of when physical p went low; used to
@@ -112,8 +112,19 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 {
 	uint16_t tmp_press_time;
 	uint16_t tmp_delay_time;
-	
-	// get toggle press timer	
+
+	// TAP and DOUBLE_TAP own their own state machines and track timing
+	// internally. The standard delay_act ticker below would auto-transition
+	// DELAY -> PRESS at tmp_delay_time (= 0 for slots with no per-slot
+	// delay timer), clobbering the gesture-specific dwell. Bail before
+	// touching delay_act for these types.
+	if (p_dev_config->buttons[num].type == TAP ||
+	    p_dev_config->buttons[num].type == DOUBLE_TAP)
+	{
+		return;
+	}
+
+	// get toggle press timer
 	switch (p_dev_config->buttons[num].press_timer)
 	{	
 			case BUTTON_TIMER_1:
@@ -161,7 +172,7 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 	}
 
 	// BUTTON_NORMAL gesture coordination: extend the delay window to the
-	// per-physical resolved gesture window when sister LONG_PRESS / DOUBLE_TAP
+	// per-physical resolved gesture window when sister TAP / DOUBLE_TAP
 	// slots exist. NORMAL must hold off firing until the gesture decision is
 	// in. gesture_delay_ms[p] is 0 when no gesture sister exists, leaving
 	// existing behaviour untouched for plain NORMAL slots.
@@ -236,7 +247,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				}
 				else if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
 				{
-					// Gesture coordination: if a sister LONG_PRESS or DOUBLE_TAP
+					// Gesture coordination: if a sister TAP or DOUBLE_TAP
 					// fired during the delay window, suppress this NORMAL fire and
 					// return to IDLE without setting current_state. Only NORMAL
 					// participates -- POV*_CENTER share this case body but live on
@@ -714,44 +725,78 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				break;
 			}
 
-			case LONG_PRESS:
+			case TAP:
 			{
-				// Hold-style gesture: virtual button mirrors physical only after the
-				// physical has been held continuously for long_press_threshold_ms.
-				// Releasing before threshold aborts without firing. Once fired,
-				// gesture_claimed[physical] is set so the sister BUTTON_NORMAL slot
-				// (if any) suppresses its delayed press.
+				// Tap gesture: fires a short pulse if the physical is pressed
+				// AND released within tap_cutoff_ms. Holding past the cutoff
+				// aborts without firing -- letting the sister BUTTON_NORMAL slot
+				// take the hold. On fire, gesture_claimed[physical] is set so
+				// the sister NORMAL slot (if any) suppresses its delayed press.
+				//
+				// State held in delay_act:
+				//   IDLE   - waiting for press
+				//   DELAY  - press observed, waiting for release-within-cutoff
+				//            or cutoff expiry
+				//   PRESS  - TAP fired; pulse window active (TAP_PULSE_MS)
+				//   BLOCK  - aborted (held past cutoff); waiting for release
+				//
+				// TAP_PULSE_MS is the duration current_state stays high after
+				// fire. Long enough that the host samples it at least once;
+				// short enough that quick re-taps stay responsive.
+				#define TAP_PULSE_MS 100
 				int8_t p = p_dev_config->buttons[num].physical_num;
-				uint16_t threshold_ms = p_dev_config->long_press_threshold_ms;
+				uint16_t cutoff_ms = p_dev_config->tap_cutoff_ms;
+				uint8_t falling = (p_button_state->curr_physical_state < p_button_state->prev_physical_state);
 
 				if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
 				{
-					// Already fired -- mirror physical until release.
-					p_button_state->current_state = p_button_state->curr_physical_state;
-					if (p_button_state->curr_physical_state == 0)
+					// Pulse window. Drop after TAP_PULSE_MS.
+					if (millis - p_button_state->time_last >= TAP_PULSE_MS)
 					{
 						p_button_state->delay_act = BUTTON_ACTION_IDLE;
+						p_button_state->current_state = 0;
+					}
+					else
+					{
+						p_button_state->current_state = 1;
 					}
 				}
 				else if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
-					if (p_button_state->curr_physical_state == 0)
+					if (falling)
 					{
-						// Released before threshold -- abort.
-						p_button_state->delay_act = BUTTON_ACTION_IDLE;
-						p_button_state->current_state = 0;
-					}
-					else if (millis - p_button_state->time_last >= threshold_ms)
-					{
-						// Held long enough -- fire and claim.
+						// Released while armed -- inside cutoff window by
+						// definition (cutoff-expiry branch below transitions
+						// out of DELAY before this can fire late). Fire pulse.
 						p_button_state->delay_act = BUTTON_ACTION_PRESS;
+						p_button_state->time_last = millis;
 						p_button_state->current_state = 1;
 						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
 					}
+					else if (millis - p_button_state->time_last >= cutoff_ms)
+					{
+						// Cutoff expired while still held -- abort.
+						p_button_state->delay_act = BUTTON_ACTION_BLOCK;
+						p_button_state->current_state = 0;
+					}
+					else
+					{
+						p_button_state->current_state = 0;
+					}
+				}
+				else if (p_button_state->delay_act == BUTTON_ACTION_BLOCK)
+				{
+					// Aborted; wait for release before re-arming so the next
+					// rising edge starts a fresh attempt.
+					if (p_button_state->curr_physical_state == 0)
+					{
+						p_button_state->delay_act = BUTTON_ACTION_IDLE;
+					}
+					p_button_state->current_state = 0;
 				}
 				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
 				{
-					// Rising edge in IDLE -- start the threshold timer.
+					// Rising edge in IDLE -- arm the cutoff timer.
 					p_button_state->delay_act = BUTTON_ACTION_DELAY;
 					p_button_state->time_last = millis;
 					p_button_state->current_state = 0;
@@ -914,7 +959,7 @@ void Gestures_Init (dev_config_t * p_dev_config)
 		if (p < 0 || p >= MAX_BUTTONS_NUM) continue;
 
 		uint16_t cand = 0;
-		if (t == LONG_PRESS)        cand = p_dev_config->long_press_threshold_ms;
+		if (t == TAP)               cand = p_dev_config->tap_cutoff_ms;
 		else if (t == DOUBLE_TAP)   cand = p_dev_config->double_tap_window_ms;
 		else                        continue;
 

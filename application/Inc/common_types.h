@@ -237,12 +237,18 @@ enum
 
 	// Gesture button types. Appended last so adding them doesn't shift any
 	// existing enum value. Coexistence rule (configurator-enforced): a
-	// physical input may host {NORMAL, LONG_PRESS, DOUBLE_TAP} only --
-	// mixing with other types is blocked. NORMAL slots delay their output
-	// by the resolved gesture window when a sister gesture slot exists,
-	// and the gesture wins (suppresses NORMAL) if it fires within the
-	// window. See F103_GESTURE_PLAN.md.
-	LONG_PRESS,
+	// physical input may host {NORMAL, TAP, DOUBLE_TAP} only -- mixing
+	// with other types is blocked. NORMAL slots delay their output by the
+	// resolved gesture window when a sister gesture slot exists, and the
+	// gesture wins (suppresses NORMAL) if it fires within the window. See
+	// F103_GESTURE_PLAN.md.
+	//
+	// TAP semantics: fires briefly (a pulse) when the physical is pressed
+	// AND released within tap_cutoff_ms. Holding past the cutoff aborts
+	// without firing -- letting the sister NORMAL slot take the hold.
+	// Enum identifier was renamed from LONG_PRESS but the integer value
+	// is preserved so existing configs and legacy archives still decode.
+	TAP,
 	DOUBLE_TAP,
 };
 typedef uint8_t button_type_t;
@@ -337,7 +343,7 @@ typedef struct logical_buttons_state_t
 	/* SYNC_SKIP_BEGIN -- firmware-only DOUBLE_TAP runtime tracking; not in dev_config_t */
 	// DOUBLE_TAP: 0 = idle, 1 = first tap observed (waiting for second within
 	// window), 2 = second tap captured (mirroring physical until release).
-	// Unused for non-DOUBLE_TAP slots. LONG_PRESS reuses time_last for its
+	// Unused for non-DOUBLE_TAP slots. TAP reuses time_last for its
 	// rising-edge timestamp.
 	uint8_t tap_count							:2;
 	int32_t first_tap_ms;	// timestamp of first rising edge in current DOUBLE_TAP window
@@ -527,12 +533,13 @@ typedef struct
 	uint16_t						button_timer2_ms;						// config packet 7
 	uint16_t						button_timer3_ms;						// config packet 8
 	uint16_t 						a2b_debounce_ms;						// config packet 9
-	// Gesture-detection global timers. Apply to every LONG_PRESS / DOUBLE_TAP
-	// slot on the device (no per-slot override). long_press_threshold_ms is the
-	// hold time before LONG_PRESS fires; double_tap_window_ms is the max time
+	// Gesture-detection global timers. Apply to every TAP / DOUBLE_TAP
+	// slot on the device (no per-slot override). tap_cutoff_ms is the max
+	// hold time for a TAP to count (released-within-cutoff fires the pulse;
+	// held past cutoff aborts); double_tap_window_ms is the max time
 	// between first and second tap for DOUBLE_TAP to fire. Defaults seeded in
 	// init_config (main.h).
-	uint16_t						long_press_threshold_ms;
+	uint16_t						tap_cutoff_ms;
 	uint16_t						double_tap_window_ms;
 	
 	// config 12-13-14
