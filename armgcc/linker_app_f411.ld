@@ -51,6 +51,17 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  /* Application image identification footer (issue anpeaco/FreeJoyX#23).
+   * See sibling F103 linker for rationale -- the configurator's flasher
+   * scans the linked .bin for FREEJOY_IMAGE_MAGIC. KEEP so --gc-sections
+   * does not drop the const (which is referenced only by external tooling). */
+  .freejoy_id :
+  {
+    . = ALIGN(4);
+    KEEP(*(.freejoy_id))
+    . = ALIGN(4);
+  } >FLASH
+
   .ARM.extab : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >FLASH
   .ARM :
   {

@@ -43,6 +43,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/axis_to_buttons.c \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \
+../application/Src/image_id.c \
 ../application/Src/sensor_dispatch.c \
 ../application/Src/config.c \
 ../application/Src/bitmap.c \

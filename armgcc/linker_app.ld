@@ -102,6 +102,19 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  /* Application image identification footer (issue anpeaco/FreeJoyX#23).
+   * The configurator's flasher scans the linked .bin for FREEJOY_IMAGE_MAGIC
+   * to find the freejoy_image_id_t struct and verify board match + read
+   * the target firmware version before flashing. KEEP so --gc-sections
+   * does not drop it; the const is referenced only by external tooling
+   * and would otherwise be eligible for collection. */
+  .freejoy_id :
+  {
+    . = ALIGN(4);
+    KEEP(*(.freejoy_id))
+    . = ALIGN(4);
+  } >FLASH
+
   .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >FLASH
   .ARM : {
     __exidx_start = .;

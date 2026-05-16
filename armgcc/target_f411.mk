@@ -77,6 +77,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f411_blackpill/Src/board_sensor_irqs.c \
 ../application/Src/buttons.c \
 ../application/Src/encoders.c \
+../application/Src/image_id.c \
 ../application/Src/analog.c \
 ../application/Src/sensor_dispatch.c \
 ../application/Src/usb_app.c \
