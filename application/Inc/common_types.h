@@ -326,7 +326,13 @@ enum
 	BUTTON_ACTION_DELAY,
 	BUTTON_ACTION_PRESS,
 	BUTTON_ACTION_BLOCK,
-	
+	/* TAP-only: release-within-cutoff observed AND a DOUBLE_TAP sister
+	 * slot exists on the same physical. TAP defers its pulse fire for
+	 * one double_tap_window_ms so a second rising edge can be
+	 * interpreted as a double-tap (DT fires, TAP cancels). Without a
+	 * DT sister, TAP goes straight to PRESS without ever entering this
+	 * state. */
+	BUTTON_ACTION_TAP_PENDING,
 };
 typedef uint8_t button_action_t;
 
@@ -338,7 +344,7 @@ typedef struct logical_buttons_state_t
 	uint8_t on_state 							:1;
 	uint8_t off_state 						:1;
 	uint8_t current_state					:1;
-	uint8_t delay_act 						:2;
+	uint8_t delay_act 						:3;
 
 	/* SYNC_SKIP_BEGIN -- firmware-only DOUBLE_TAP runtime tracking; not in dev_config_t */
 	// DOUBLE_TAP: 0 = idle, 1 = first tap observed (waiting for second within

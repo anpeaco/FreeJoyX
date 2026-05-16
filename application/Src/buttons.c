@@ -50,6 +50,13 @@ volatile uint8_t							button_mutex = 0;
 static uint16_t								gesture_delay_ms[MAX_BUTTONS_NUM];
 static uint8_t								gesture_claimed[MAX_BUTTONS_NUM];
 static int32_t								gesture_low_since[MAX_BUTTONS_NUM];
+/* Per-physical record of whether a DOUBLE_TAP sister slot exists, and
+ * the configured window. TAP slots use this to decide whether to fire
+ * immediately on release-within-cutoff (no DT sister) or defer the
+ * pulse by this many ms so a possible second tap can take over
+ * (mutually-exclusive TAP vs DT semantics -- see F103_GESTURE_PLAN.md).
+ * 0 = no DT sister; non-zero = DT sister exists with this window. */
+static uint16_t								dt_window_ms[MAX_BUTTONS_NUM];
 
 static void GestureClaimedSweep (int32_t millis);
 
@@ -802,19 +809,79 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				{
 					if (falling)
 					{
-						// Released while armed -- inside cutoff window by
-						// definition (cutoff-expiry branch below transitions
-						// out of DELAY before this can fire late). Fire pulse.
-						p_button_state->delay_act = BUTTON_ACTION_PRESS;
-						p_button_state->time_last = millis;
-						p_button_state->current_state = 1;
-						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
+						/* Released while armed -- inside cutoff window by
+						 * definition (cutoff-expiry branch below transitions
+						 * out of DELAY before this can fire late). Two paths
+						 * depending on whether a DOUBLE_TAP sister slot exists
+						 * on this physical:
+						 *   1. No DT sister  -> fire pulse immediately.
+						 *   2. DT sister     -> defer the fire by dt_window_ms
+						 *                       so a possible second rising
+						 *                       edge can be interpreted as a
+						 *                       double-tap (DT takes over,
+						 *                       this TAP cancels). Set
+						 *                       gesture_claimed optimistically
+						 *                       so the NORMAL sister suppresses
+						 *                       regardless of which way the
+						 *                       decision goes -- DT will also
+						 *                       claim on its own fire, and if
+						 *                       TAP cancels then DT firing
+						 *                       takes over the claim. */
+						if (p >= 0 && p < MAX_BUTTONS_NUM && dt_window_ms[p] > 0)
+						{
+							p_button_state->delay_act = BUTTON_ACTION_TAP_PENDING;
+							p_button_state->time_last = millis;
+							p_button_state->current_state = 0;
+							gesture_claimed[p] = 1;
+						}
+						else
+						{
+							p_button_state->delay_act = BUTTON_ACTION_PRESS;
+							p_button_state->time_last = millis;
+							p_button_state->current_state = 1;
+							if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
+						}
 					}
 					else if (millis - p_button_state->time_last >= cutoff_ms)
 					{
 						// Cutoff expired while still held -- abort.
 						p_button_state->delay_act = BUTTON_ACTION_BLOCK;
 						p_button_state->current_state = 0;
+					}
+					else
+					{
+						p_button_state->current_state = 0;
+					}
+				}
+				else if (p_button_state->delay_act == BUTTON_ACTION_TAP_PENDING)
+				{
+					/* Deferred fire: a release-within-cutoff happened with a
+					 * DT sister present, so we're waiting one
+					 * double_tap_window_ms to see if a second rising edge
+					 * arrives. Three outcomes:
+					 *   - Rising edge in window  -> double-tap pattern. DT
+					 *                               handles it from here.
+					 *                               Cancel this TAP into
+					 *                               BLOCK so we wait for the
+					 *                               release of the second tap
+					 *                               before re-arming.
+					 *   - Window elapses         -> single-tap confirmed.
+					 *                               Fire the pulse now.
+					 *   - Otherwise              -> hold off. */
+					if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
+					{
+						p_button_state->delay_act = BUTTON_ACTION_BLOCK;
+						p_button_state->current_state = 0;
+					}
+					else if (millis - p_button_state->time_last >= dt_window_ms[p])
+					{
+						p_button_state->delay_act = BUTTON_ACTION_PRESS;
+						p_button_state->time_last = millis;
+						p_button_state->current_state = 1;
+						/* gesture_claimed already set optimistically when we
+						 * entered TAP_PENDING; idempotent re-set here keeps
+						 * the invariant readable. */
+						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
 					}
 					else
 					{
@@ -988,6 +1055,28 @@ void Gestures_Init (dev_config_t * p_dev_config)
 		gesture_delay_ms[p] = 0;
 		gesture_claimed[p] = 0;
 		gesture_low_since[p] = 0;
+		dt_window_ms[p] = 0;
+	}
+	/* Two-pass build:
+	 *   pass 1 -- flag which physicals host a TAP and/or DT sister,
+	 *             record dt_window_ms per physical for the TAP case to
+	 *             consult at fire time.
+	 *   pass 2 -- compute gesture_delay_ms per physical from the flags
+	 *             so NORMAL sister slots wait the full gesture-decision
+	 *             window before transitioning to PRESS.
+	 *
+	 * Per-physical decision-window math:
+	 *   - TAP only:    cutoff_ms (TAP fires immediately at release)
+	 *   - DT only:     dt_window_ms (DT fires at second rising or aborts)
+	 *   - TAP+DT both: cutoff_ms + dt_window_ms (TAP defers up to
+	 *                  dt_window_ms after a release-at-cutoff to confirm
+	 *                  no second tap; NORMAL must wait that long before
+	 *                  transitioning to PRESS to suppress correctly) */
+	uint8_t has_tap[MAX_BUTTONS_NUM];
+	uint8_t has_dt[MAX_BUTTONS_NUM];
+	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++) {
+		has_tap[p] = 0;
+		has_dt[p] = 0;
 	}
 	for (uint8_t s = 0; s < MAX_BUTTONS_NUM; s++)
 	{
@@ -995,12 +1084,19 @@ void Gestures_Init (dev_config_t * p_dev_config)
 		int8_t p = p_dev_config->buttons[s].physical_num;
 		if (p < 0 || p >= MAX_BUTTONS_NUM) continue;
 
-		uint16_t cand = 0;
-		if (t == TAP)               cand = p_dev_config->tap_cutoff_ms;
-		else if (t == DOUBLE_TAP)   cand = p_dev_config->double_tap_window_ms;
-		else                        continue;
-
-		if (cand > gesture_delay_ms[p]) gesture_delay_ms[p] = cand;
+		if (t == TAP) {
+			has_tap[p] = 1;
+		}
+		else if (t == DOUBLE_TAP) {
+			has_dt[p] = 1;
+			dt_window_ms[p] = p_dev_config->double_tap_window_ms;
+		}
+	}
+	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++) {
+		uint16_t total = 0;
+		if (has_tap[p]) total += p_dev_config->tap_cutoff_ms;
+		if (has_dt[p])  total += p_dev_config->double_tap_window_ms;
+		gesture_delay_ms[p] = total;
 	}
 }
 
