@@ -1057,27 +1057,21 @@ void Gestures_Init (dev_config_t * p_dev_config)
 		gesture_low_since[p] = 0;
 		dt_window_ms[p] = 0;
 	}
-	/* Two-pass build:
-	 *   pass 1 -- flag which physicals host a TAP and/or DT sister,
-	 *             record dt_window_ms per physical for the TAP case to
-	 *             consult at fire time.
-	 *   pass 2 -- compute gesture_delay_ms per physical from the flags
-	 *             so NORMAL sister slots wait the full gesture-decision
-	 *             window before transitioning to PRESS.
+	/* One-pass build: accumulate gesture_delay_ms directly while scanning
+	 * slots, and capture dt_window_ms per physical for the TAP case to
+	 * consult at fire time.
 	 *
 	 * Per-physical decision-window math:
-	 *   - TAP only:    cutoff_ms (TAP fires immediately at release)
-	 *   - DT only:     dt_window_ms (DT fires at second rising or aborts)
+	 *   - TAP only:    cutoff_ms          (TAP fires immediately at release)
+	 *   - DT only:     dt_window_ms       (DT fires at second rising or aborts)
 	 *   - TAP+DT both: cutoff_ms + dt_window_ms (TAP defers up to
 	 *                  dt_window_ms after a release-at-cutoff to confirm
 	 *                  no second tap; NORMAL must wait that long before
-	 *                  transitioning to PRESS to suppress correctly) */
-	uint8_t has_tap[MAX_BUTTONS_NUM];
-	uint8_t has_dt[MAX_BUTTONS_NUM];
-	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++) {
-		has_tap[p] = 0;
-		has_dt[p] = 0;
-	}
+	 *                  transitioning to PRESS to suppress correctly)
+	 *
+	 * Assumes the configurator's coexistence filter prevents more than
+	 * one TAP slot or more than one DT slot per physical -- otherwise
+	 * the += would over-count. */
 	for (uint8_t s = 0; s < MAX_BUTTONS_NUM; s++)
 	{
 		button_type_t t = p_dev_config->buttons[s].type;
@@ -1085,18 +1079,12 @@ void Gestures_Init (dev_config_t * p_dev_config)
 		if (p < 0 || p >= MAX_BUTTONS_NUM) continue;
 
 		if (t == TAP) {
-			has_tap[p] = 1;
+			gesture_delay_ms[p] += p_dev_config->tap_cutoff_ms;
 		}
 		else if (t == DOUBLE_TAP) {
-			has_dt[p] = 1;
+			gesture_delay_ms[p] += p_dev_config->double_tap_window_ms;
 			dt_window_ms[p] = p_dev_config->double_tap_window_ms;
 		}
-	}
-	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++) {
-		uint16_t total = 0;
-		if (has_tap[p]) total += p_dev_config->tap_cutoff_ms;
-		if (has_dt[p])  total += p_dev_config->double_tap_window_ms;
-		gesture_delay_ms[p] = total;
 	}
 }
 
