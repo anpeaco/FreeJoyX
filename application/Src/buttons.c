@@ -253,20 +253,32 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// Rising edge while already in DELAY = quick re-press
 					// (e.g. second tap of a double-tap on a TAP+NORMAL physical).
 					// Re-arm the gesture window from the new rising edge so the
-					// new press cycle evaluates independently, and clear
-					// gesture_claimed so a TAP that fires this cycle gets
-					// observed cleanly. Without this, NORMAL's time_last stayed
-					// pinned to the original press, and the standard timer's
-					// DELAY->PRESS transition could fire before/around the
-					// moment GestureClaimedSweep cleared the previous cycle's
-					// claim, causing NORMAL to flash for one tick.
+					// new press cycle evaluates independently. Without this,
+					// NORMAL's time_last stayed pinned to the original press,
+					// and the standard timer's DELAY->PRESS transition could
+					// fire before/around the moment GestureClaimedSweep cleared
+					// the previous cycle's claim, causing NORMAL to flash for
+					// one tick.
+					//
+					// gesture_claimed handling: only clear it if there's NO DT
+					// sister slot on this physical. With a DT sister, this
+					// rising edge IS the DT-fire trigger (second tap), and DT
+					// sets gesture_claimed in the SAME tick. Slot iteration is
+					// in slot-index order, so a NORMAL slot whose index is
+					// higher than the DT slot's would otherwise clear the
+					// claim that DT just set, leading to NORMAL firing on a
+					// double-tap-and-hold (which should be DT's domain). For
+					// TAP-only sister (no DT), clearing is needed so a
+					// tap-then-hold cycle correctly fires NORMAL on the hold.
 					if (p_dev_config->buttons[num].type == BUTTON_NORMAL &&
 					    p_button_state->curr_physical_state > p_button_state->prev_physical_state)
 					{
 						p_button_state->time_last = millis;
 						p_button_state->on_state = p_button_state->curr_physical_state;
 						int8_t p = p_dev_config->buttons[num].physical_num;
-						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 0;
+						if (p >= 0 && p < MAX_BUTTONS_NUM && dt_window_ms[p] == 0) {
+							gesture_claimed[p] = 0;
+						}
 					}
 					// else: nop (still waiting out the gesture window)
 				}
