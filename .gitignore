@@ -64,3 +64,9 @@ MDK-ARM/FreeJoy.bin
 *.uvoptx
 *.uvprojx
 /MDK-ARM/.vscode
+
+# Generated per-build by the dispatcher Makefile to embed an
+# auto-incrementing FIRMWARE_BUILD_ID into the firmware. Per-machine
+# counter; never tracked.
+armgcc/.build_counter
+application/Inc/build_info.h
