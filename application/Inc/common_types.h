@@ -353,6 +353,11 @@ typedef struct logical_buttons_state_t
 	// rising-edge timestamp.
 	uint8_t tap_count							:2;
 	int32_t first_tap_ms;	// timestamp of first rising edge in current DOUBLE_TAP window
+	// Gesture-managed slots (TAP / DOUBLE_TAP / gesture-coexisting NORMAL):
+	// minimum-hold deadline. Output stays high until millis > release_floor
+	// even after the gesture-derived condition drops. See issue
+	// anpeaco/FreeJoyX#22.
+	int32_t release_floor;
 	/* SYNC_SKIP_END */
 } logical_buttons_state_t;
 
