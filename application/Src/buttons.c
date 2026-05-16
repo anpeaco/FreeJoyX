@@ -771,8 +771,27 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// Pulse window. Drop after TAP_PULSE_MS.
 					if (millis - p_button_state->time_last >= TAP_PULSE_MS)
 					{
-						p_button_state->delay_act = BUTTON_ACTION_IDLE;
-						p_button_state->current_state = 0;
+						/* If the user has already pressed for a re-tap
+						 * during the pulse window, the rising edge was
+						 * swallowed (PRESS branch doesn't track edges,
+						 * and by the time we transition to IDLE both
+						 * prev_physical_state and curr_physical_state
+						 * are 1 so the IDLE rising-edge check below
+						 * would fail). Detect that case here and arm a
+						 * fresh DELAY directly. Conservative: we don't
+						 * know the actual rising-edge time during the
+						 * pulse, so cutoff_ms is measured from now. */
+						if (p_button_state->curr_physical_state)
+						{
+							p_button_state->delay_act = BUTTON_ACTION_DELAY;
+							p_button_state->time_last = millis;
+							p_button_state->current_state = 0;
+						}
+						else
+						{
+							p_button_state->delay_act = BUTTON_ACTION_IDLE;
+							p_button_state->current_state = 0;
+						}
 					}
 					else
 					{
