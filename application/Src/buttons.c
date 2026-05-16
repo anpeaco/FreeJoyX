@@ -243,7 +243,25 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 			case POV4_CENTER:
 				if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
-					// nop
+					// Rising edge while already in DELAY = quick re-press
+					// (e.g. second tap of a double-tap on a TAP+NORMAL physical).
+					// Re-arm the gesture window from the new rising edge so the
+					// new press cycle evaluates independently, and clear
+					// gesture_claimed so a TAP that fires this cycle gets
+					// observed cleanly. Without this, NORMAL's time_last stayed
+					// pinned to the original press, and the standard timer's
+					// DELAY->PRESS transition could fire before/around the
+					// moment GestureClaimedSweep cleared the previous cycle's
+					// claim, causing NORMAL to flash for one tick.
+					if (p_dev_config->buttons[num].type == BUTTON_NORMAL &&
+					    p_button_state->curr_physical_state > p_button_state->prev_physical_state)
+					{
+						p_button_state->time_last = millis;
+						p_button_state->on_state = p_button_state->curr_physical_state;
+						int8_t p = p_dev_config->buttons[num].physical_num;
+						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 0;
+					}
+					// else: nop (still waiting out the gesture window)
 				}
 				else if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
 				{
