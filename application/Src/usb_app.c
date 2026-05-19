@@ -224,11 +224,22 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 				Board_USB_SendReport(REPORT_ID_CONFIG_OUT, tmp_buf, 2);
 #endif
 			} else {
-				/* Last packet received. Check version + board_id. */
-				if (((tmp_dev_config.firmware_version & 0xFFF0) != (FIRMWARE_VERSION & 0xFFF0)) ||
-				    (tmp_dev_config.board_id != BOARD_ID)) {
+				/* Last packet received. Check version + board_id.
+				 * Issue #27: split the two rejection cases so the
+				 * configurator can distinguish them. 0xFE = wire-
+				 * format generation mismatch (preserves backwards
+				 * compat with older configurators). 0xFD = board_id
+				 * mismatch with version check otherwise passing.
+				 * Older configurators only check for 0xFE and
+				 * silently ignore 0xFD -- minor UX regression on
+				 * that combination, no functional break. */
+				const uint8_t version_mismatch =
+					(tmp_dev_config.firmware_version & 0xFFF0) != (FIRMWARE_VERSION & 0xFFF0);
+				const uint8_t board_mismatch =
+					tmp_dev_config.board_id != BOARD_ID;
+				if (version_mismatch || board_mismatch) {
 					tmp_buf[0] = REPORT_ID_CONFIG_OUT;
-					tmp_buf[1] = 0xFE;
+					tmp_buf[1] = version_mismatch ? 0xFE : 0xFD;
 #ifdef BOARD_F411_BLACKPILL
 					App_QueueOrSendInReport(REPORT_ID_CONFIG_OUT, tmp_buf, 2);
 #else
