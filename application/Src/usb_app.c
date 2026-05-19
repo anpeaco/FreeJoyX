@@ -40,6 +40,7 @@
 
 #include "common_defines.h"
 #include "common_types.h"
+#include "build_info.h"
 #include "main.h"
 
 #include "periphery.h"
@@ -393,7 +394,12 @@ void Board_TickISR(void)
 			report_buf[0] = REPORT_ID_PARAM;
 			params_report.firmware_version = FIRMWARE_VERSION;
 			params_report.board_id = BOARD_ID;
-			params_report.reserved_layout = 0;
+			/* Repurposes the alignment-pad byte as a wraparound-counter
+			 * build ID so the configurator's sidebar can show which
+			 * firmware bin is actually flashed. Auto-incremented by the
+			 * armgcc Makefile via build_info.h; 0..255 wrap. Wire-format
+			 * compatible -- same offset, same width as before. */
+			params_report.reserved_layout = (uint8_t)(FIRMWARE_BUILD_ID & 0xFF);
 			/* Surface the project semver so the configurator's sidebar
 			 * can show "Version: X.Y.Z" alongside the wire-format token.
 			 * Issue anpeaco/FreeJoyX#18 follow-on. */

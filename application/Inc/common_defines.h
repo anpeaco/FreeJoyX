@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x0010			// FreeJoyX wire-format generation 1. Restarted from upstream's 0x17XX lineage in lockstep with the FREEJOYX_VERSION 0.0.0 reset (issue anpeaco/FreeJoyX#18). Mask group 0x0010 -- subsequent wire-format bumps walk to 0x0020, 0x0030, etc. Distinct from any historical FreeJoy wire format so legacy devices on the 0x17XX line are unambiguously legacy. dev_config_t shape unchanged from prior internal 0x1790 (which never shipped); the forward migrator chain still covers 0x1700/0x1710/0x1730/0x1770/0x1780 for existing field-deployed devices.
+#define FIRMWARE_VERSION					0x0020			// FreeJoyX wire-format generation 2. dev_config_t SHAPE unchanged from 0x0010 -- the bump is for SEMANTIC drift: the enum value formerly named LONG_PRESS (hold-style, "fires after threshold") was renamed to TAP and reinterpreted as release-within-cutoff ("fires on release before window expires"). Same integer enum slot, same byte position in config, different gesture behaviour. Bumping the mask group forces factory reset on first flash so a user's existing buttons don't silently change behaviour mid-upgrade. The forward migrator chain covers 0x0010 (FreeJoyX v0.0.x, LONG_PRESS semantics) plus the upstream 0x1700/0x1710/0x1730/0x1770/0x1780 lineage.
 
 /* FREEJOYX_VERSION is the user-facing project version (semver). It's
  * decoupled from FIRMWARE_VERSION above -- FIRMWARE_VERSION is the
@@ -24,8 +24,8 @@
  * Until the first formal approved release we stay on major 0. Move to
  * 1.0.0 when the project is judged stable. See issue anpeaco/FreeJoyX#18. */
 #define FREEJOYX_VERSION_MAJOR              0
-#define FREEJOYX_VERSION_MINOR              0
-#define FREEJOYX_VERSION_PATCH              3
+#define FREEJOYX_VERSION_MINOR              1
+#define FREEJOYX_VERSION_PATCH              0
 #define FREEJOYX_VER_STR_HELPER(x)          #x
 #define FREEJOYX_VER_STR(x)                 FREEJOYX_VER_STR_HELPER(x)
 #define FREEJOYX_VERSION                    FREEJOYX_VER_STR(FREEJOYX_VERSION_MAJOR) "." \

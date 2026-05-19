@@ -38,20 +38,85 @@ uint8_t												a2b_first = 0;
 uint8_t												a2b_last = 0;
 volatile uint8_t							button_mutex = 0;
 
-// Gesture-coordination tables, indexed by physical input number (0..MAX_BUTTONS_NUM-1).
-// gesture_delay_ms[p] = resolved gesture window for physical p, 0 if no LONG_PRESS
-//   or DOUBLE_TAP slot is bound to it. Built once at boot by Gestures_Init().
-// gesture_claimed[p] = 1 once a LONG_PRESS or DOUBLE_TAP has fired in the current
-//   press cycle of physical p; tells sister BUTTON_NORMAL slots to suppress their
-//   delayed press fire.
-// gesture_low_since[p] = millis timestamp of when physical p went low; used to
-//   delay clearing gesture_claimed until the physical has been low long enough
-//   for any pending NORMAL DELAY-to-PRESS transition to have already resolved.
-static uint16_t								gesture_delay_ms[MAX_BUTTONS_NUM];
-static uint8_t								gesture_claimed[MAX_BUTTONS_NUM];
-static int32_t								gesture_low_since[MAX_BUTTONS_NUM];
+/* Per-physical gesture state machine (issue anpeaco/FreeJoyX#21).
+ *
+ * Replaces the previous per-slot TAP / DOUBLE_TAP / NORMAL state machines
+ * + gesture_claimed coordination. One state machine per physical input
+ * observes the rising/falling edges and tracks which gesture the user is
+ * performing. The TAP / DT / NORMAL cases in LogicalButtonProcessState
+ * become passive consumers that derive their output from gesture[p].state
+ * without writing to any shared coordination flags. Eliminates the
+ * slot-iteration-order races that plagued the earlier coordination model.
+ *
+ * State transitions:
+ *   IDLE             + rising            -> ARMED (arm_time = now)
+ *   ARMED            + falling (hold <= cutoff):
+ *                                        -> WAIT_DT (if has_dt[p]; release_time = now)
+ *                                        -> IDLE + fire TAP pulse (if has_tap[p] and !has_dt[p])
+ *                                        -> IDLE (otherwise)
+ *   ARMED            + tick (held > cutoff):
+ *                                        -> NORMAL_HELD (if has_normal[p])
+ *                                        -> ABORTED     (otherwise)
+ *   NORMAL_HELD      + falling           -> IDLE
+ *   ABORTED          + falling           -> IDLE
+ *   WAIT_DT          + rising            -> DT_HELD
+ *   WAIT_DT          + tick (dt_window elapsed since release):
+ *                                        -> IDLE + fire TAP pulse (if has_tap[p])
+ *                                        -> IDLE                  (otherwise)
+ *   DT_HELD          + falling           -> IDLE
+ *
+ * Pure-NORMAL physicals (no TAP/DT sister) are not driven by this state
+ * machine -- they keep the existing standard-timer-based NORMAL logic so
+ * per-slot delay_timer / press_timer settings still work. */
+enum {
+	GESTURE_STATE_IDLE = 0,
+	GESTURE_STATE_ARMED,
+	GESTURE_STATE_NORMAL_HELD,
+	GESTURE_STATE_ABORTED,
+	GESTURE_STATE_WAIT_DT,
+	GESTURE_STATE_DT_HELD,
+};
 
-static void GestureClaimedSweep (int32_t millis);
+typedef struct {
+	uint8_t  state;            /* GESTURE_STATE_* */
+	uint8_t  prev_physical;    /* previous tick's debounced physical state */
+	int32_t  arm_time;         /* timestamp of the current press cycle's rising edge */
+	int32_t  release_time;     /* timestamp of falling that entered WAIT_DT */
+	int32_t  tap_pulse_until;  /* end-of-pulse timestamp for TAP slot output */
+} gesture_t;
+
+static gesture_t              gesture[MAX_BUTTONS_NUM];
+static uint8_t                has_tap[MAX_BUTTONS_NUM];
+static uint8_t                has_dt[MAX_BUTTONS_NUM];
+static uint8_t                has_normal[MAX_BUTTONS_NUM];
+
+/* MIN_PULSE_MS: absolute minimum logical-button pulse width on
+ * gesture-managed slots (TAP / DOUBLE_TAP / gesture-coexisting NORMAL).
+ * Guarantees a host polling at 125 Hz samples the press at least twice
+ * even with poll-window skew. The per-slot press_timer can extend
+ * beyond this; nothing can shorten it. Issue anpeaco/FreeJoyX#22. */
+#define MIN_PULSE_MS 20
+
+/**
+  * @brief  Resolve a gesture-managed slot's effective press-floor in ms.
+  *         Reads the slot's press_timer selector, looks up the global
+  *         button_timerN_ms value, and applies the MIN_PULSE_MS floor.
+  *         Slots configured with BUTTON_TIMER_NONE get exactly
+  *         MIN_PULSE_MS.
+  * @retval Floor duration in ms (>= MIN_PULSE_MS).
+  */
+static uint16_t ResolvePressFloorMs (dev_config_t * p_dev_config, uint8_t num)
+{
+	uint16_t t;
+	switch (p_dev_config->buttons[num].press_timer)
+	{
+		case BUTTON_TIMER_1: t = p_dev_config->button_timer1_ms; break;
+		case BUTTON_TIMER_2: t = p_dev_config->button_timer2_ms; break;
+		case BUTTON_TIMER_3: t = p_dev_config->button_timer3_ms; break;
+		default:             t = 0; break;
+	}
+	return (t < MIN_PULSE_MS) ? MIN_PULSE_MS : t;
+}
 
 /**
   * @brief  Processing debounce for raw buttons input
@@ -102,18 +167,25 @@ void ButtonsDebounceProcess (dev_config_t * p_dev_config)
 				physical_buttons_state[i].changed = 0;
 			}
 	}
-	// Decay gesture_claimed[] flags once their physical inputs have been
-	// low long enough; sister BUTTON_NORMAL slots use these flags to
-	// suppress delayed press fires within the gesture window.
-	GestureClaimedSweep(millis);
 }
 
 static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state, int32_t millis, dev_config_t * p_dev_config, uint8_t num)
 {
 	uint16_t tmp_press_time;
 	uint16_t tmp_delay_time;
-	
-	// get toggle press timer	
+
+	// TAP and DOUBLE_TAP own their own state machines and track timing
+	// internally. The standard delay_act ticker below would auto-transition
+	// DELAY -> PRESS at tmp_delay_time (= 0 for slots with no per-slot
+	// delay timer), clobbering the gesture-specific dwell. Bail before
+	// touching delay_act for these types.
+	if (p_dev_config->buttons[num].type == TAP ||
+	    p_dev_config->buttons[num].type == DOUBLE_TAP)
+	{
+		return;
+	}
+
+	// get toggle press timer
 	switch (p_dev_config->buttons[num].press_timer)
 	{	
 			case BUTTON_TIMER_1:
@@ -160,21 +232,13 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 		tmp_delay_time = 100;
 	}
 
-	// BUTTON_NORMAL gesture coordination: extend the delay window to the
-	// per-physical resolved gesture window when sister LONG_PRESS / DOUBLE_TAP
-	// slots exist. NORMAL must hold off firing until the gesture decision is
-	// in. gesture_delay_ms[p] is 0 when no gesture sister exists, leaving
-	// existing behaviour untouched for plain NORMAL slots.
-	if (p_dev_config->buttons[num].type == BUTTON_NORMAL)
-	{
-		int8_t p = p_dev_config->buttons[num].physical_num;
-		if (p >= 0 && p < MAX_BUTTONS_NUM)
-		{
-			uint16_t g = gesture_delay_ms[p];
-			if (g > tmp_delay_time) tmp_delay_time = g;
-		}
-	}
-		
+	/* Issue anpeaco/FreeJoyX#21: BUTTON_NORMAL slots whose physical hosts a
+	 * TAP or DOUBLE_TAP sister are driven directly by the per-physical
+	 * gesture state machine in LogicalButtonProcessState and never enter
+	 * delay_act, so no delay-window extension is needed here. Pure-NORMAL
+	 * physicals continue to use the configured per-slot delay/press timers. */
+
+
 	// set max delay timer for sequential and radio buttons // heroviy kostil`, need if for check all seq buttons for types of timings
 //	if (p_dev_config->buttons[num].delay_timer && 
 //		 (p_dev_config->buttons[num].type == SEQUENTIAL_TOGGLE || p_dev_config->buttons[num].type == SEQUENTIAL_BUTTON))
@@ -230,29 +294,74 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 			case POV2_CENTER:
 			case POV3_CENTER:
 			case POV4_CENTER:
+			{
+				/* Issue anpeaco/FreeJoyX#21: when a NORMAL slot's physical
+				 * also hosts a TAP or DOUBLE_TAP sister, output is derived
+				 * from the per-physical gesture state machine instead of the
+				 * per-slot delay/press timers. NORMAL only fires while the
+				 * state machine is in NORMAL_HELD (hold-past-cutoff). This
+				 * eliminates the slot-iteration-order races that drove the
+				 * gesture_claimed bug iterations. POV*_CENTER share this case
+				 * body but live on their own physical inputs and are not
+				 * affected (has_tap / has_dt only get set for actual TAP /
+				 * DOUBLE_TAP slots, so the predicate is false for them). */
+				if (p_dev_config->buttons[num].type == BUTTON_NORMAL)
+				{
+					int8_t p = p_dev_config->buttons[num].physical_num;
+					if (p >= 0 && p < MAX_BUTTONS_NUM && (has_tap[p] || has_dt[p]))
+					{
+						/* Issue #22: re-arm release_floor each tick while
+						 * NORMAL_HELD; on exit, output stays high until the
+						 * floor expires. */
+						if (gesture[p].state == GESTURE_STATE_NORMAL_HELD)
+						{
+							p_button_state->release_floor =
+							    millis + ResolvePressFloorMs(p_dev_config, num);
+							p_button_state->current_state = 1;
+						}
+						else
+						{
+							p_button_state->current_state =
+							    (p_button_state->release_floor > millis) ? 1 : 0;
+						}
+						break;
+					}
+				}
 				if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
-					// nop
+					// Rising edge while already in DELAY = quick re-press
+					// (e.g. second tap of a double-tap on a TAP+NORMAL physical).
+					// Re-arm the gesture window from the new rising edge so the
+					// new press cycle evaluates independently. Without this,
+					// NORMAL's time_last stayed pinned to the original press,
+					// and the standard timer's DELAY->PRESS transition could
+					// fire before/around the moment GestureClaimedSweep cleared
+					// the previous cycle's claim, causing NORMAL to flash for
+					// one tick.
+					//
+					// gesture_claimed handling: do NOT clear it here. The flag's
+					// lifecycle is owned by GestureClaimedSweep, which clears
+					// it after the physical has been low for gesture_delay_ms.
+					// Clearing on re-arm causes a slot-iteration race in the
+					// TAP+DT+NORMAL case: NORMAL processed AFTER DT clobbers
+					// the claim that DT just set on the second-tap rising
+					// edge, defeating mutual exclusion. The cost is that for
+					// TAP+NORMAL setups, a quick re-press within the gesture
+					// window won't fire NORMAL on the hold (gesture_claimed
+					// is still set from the prior tap). Acceptable: that's
+					// double-tap-cadence territory and the user opted into
+					// it by not configuring a DT slot.
+					if (p_dev_config->buttons[num].type == BUTTON_NORMAL &&
+					    p_button_state->curr_physical_state > p_button_state->prev_physical_state)
+					{
+						p_button_state->time_last = millis;
+						p_button_state->on_state = p_button_state->curr_physical_state;
+					}
+					// else: nop (still waiting out the gesture window)
 				}
 				else if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
 				{
-					// Gesture coordination: if a sister LONG_PRESS or DOUBLE_TAP
-					// fired during the delay window, suppress this NORMAL fire and
-					// return to IDLE without setting current_state. Only NORMAL
-					// participates -- POV*_CENTER share this case body but live on
-					// their own physical inputs and aren't affected.
-					int8_t p = p_dev_config->buttons[num].physical_num;
-					if (p_dev_config->buttons[num].type == BUTTON_NORMAL &&
-					    p >= 0 && p < MAX_BUTTONS_NUM &&
-					    gesture_claimed[p])
-					{
-						p_button_state->delay_act = BUTTON_ACTION_IDLE;
-						p_button_state->current_state = 0;
-					}
-					else
-					{
-						p_button_state->current_state = p_button_state->on_state;
-					}
+					p_button_state->current_state = p_button_state->on_state;
 				}
 				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state &&
 								p_button_state->delay_act != BUTTON_ACTION_BLOCK)		// triggered in IDLE
@@ -271,7 +380,8 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					p_button_state->current_state = p_button_state->curr_physical_state;
 				}
 				break;
-				
+			}
+
 			case BUTTON_TOGGLE:
 				if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
@@ -714,100 +824,56 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				break;
 			}
 
-			case LONG_PRESS:
+			case TAP:
 			{
-				// Hold-style gesture: virtual button mirrors physical only after the
-				// physical has been held continuously for long_press_threshold_ms.
-				// Releasing before threshold aborts without firing. Once fired,
-				// gesture_claimed[physical] is set so the sister BUTTON_NORMAL slot
-				// (if any) suppresses its delayed press.
+				/* Issue anpeaco/FreeJoyX#21: TAP slot reads the per-physical
+				 * gesture state machine's tap_pulse_until marker (which is
+				 * set MIN_PULSE_MS in the future on fire). Issue #22 adds
+				 * the per-slot press_timer floor: arm release_floor to
+				 * fire_time + max(press_timer, MIN_PULSE_MS) so the host
+				 * sees a press of at least that duration. */
 				int8_t p = p_dev_config->buttons[num].physical_num;
-				uint16_t threshold_ms = p_dev_config->long_press_threshold_ms;
-
-				if (p_button_state->delay_act == BUTTON_ACTION_PRESS)
+				if (p >= 0 && p < MAX_BUTTONS_NUM &&
+				    gesture[p].tap_pulse_until > millis)
 				{
-					// Already fired -- mirror physical until release.
-					p_button_state->current_state = p_button_state->curr_physical_state;
-					if (p_button_state->curr_physical_state == 0)
+					/* Fire window currently open in the state machine.
+					 * Slide release_floor out to (fire-time + slot floor).
+					 * fire-time == tap_pulse_until - MIN_PULSE_MS by
+					 * construction (set by GestureProcessAll). */
+					int32_t fire_time = gesture[p].tap_pulse_until - MIN_PULSE_MS;
+					int32_t deadline  = fire_time + ResolvePressFloorMs(p_dev_config, num);
+					if (deadline > p_button_state->release_floor)
 					{
-						p_button_state->delay_act = BUTTON_ACTION_IDLE;
+						p_button_state->release_floor = deadline;
 					}
 				}
-				else if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
-				{
-					if (p_button_state->curr_physical_state == 0)
-					{
-						// Released before threshold -- abort.
-						p_button_state->delay_act = BUTTON_ACTION_IDLE;
-						p_button_state->current_state = 0;
-					}
-					else if (millis - p_button_state->time_last >= threshold_ms)
-					{
-						// Held long enough -- fire and claim.
-						p_button_state->delay_act = BUTTON_ACTION_PRESS;
-						p_button_state->current_state = 1;
-						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
-					}
-				}
-				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
-				{
-					// Rising edge in IDLE -- start the threshold timer.
-					p_button_state->delay_act = BUTTON_ACTION_DELAY;
-					p_button_state->time_last = millis;
-					p_button_state->current_state = 0;
-				}
-				else
-				{
-					p_button_state->current_state = 0;
-				}
+				p_button_state->current_state =
+				    (p_button_state->release_floor > millis) ? 1 : 0;
 				break;
 			}
 
 			case DOUBLE_TAP:
 			{
-				// Hold-while-second-tap-held gesture. Three states tracked in
-				// tap_count: 0 = idle, 1 = first tap observed (window open),
-				// 2 = second tap captured (mirroring physical until release).
-				// Window measured as time from first rising edge to second rising
-				// edge (double_tap_window_ms).
+				/* Issue anpeaco/FreeJoyX#21: DT slot reads gesture[p].state.
+				 * Issue #22: while DT_HELD and physical pressed, re-arm
+				 * release_floor each tick. After release (state -> IDLE or
+				 * curr_physical == 0), output stays high until the floor
+				 * expires. */
 				int8_t p = p_dev_config->buttons[num].physical_num;
-				uint16_t window_ms = p_dev_config->double_tap_window_ms;
-
-				if (p_button_state->tap_count == 2)
+				uint8_t high =
+				    (p >= 0 && p < MAX_BUTTONS_NUM &&
+				     gesture[p].state == GESTURE_STATE_DT_HELD &&
+				     p_button_state->curr_physical_state);
+				if (high)
 				{
-					// Captured -- mirror physical until release.
-					p_button_state->current_state = p_button_state->curr_physical_state;
-					if (p_button_state->curr_physical_state == 0)
-					{
-						p_button_state->tap_count = 0;
-					}
-				}
-				else if (p_button_state->tap_count == 1)
-				{
-					if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
-					{
-						// Second rising edge within window -- capture and claim.
-						p_button_state->tap_count = 2;
-						p_button_state->current_state = 1;
-						if (p >= 0 && p < MAX_BUTTONS_NUM) gesture_claimed[p] = 1;
-					}
-					else if ((millis - p_button_state->first_tap_ms) > window_ms)
-					{
-						// Window expired -- reset.
-						p_button_state->tap_count = 0;
-						p_button_state->current_state = 0;
-					}
-				}
-				else if (p_button_state->curr_physical_state > p_button_state->prev_physical_state)
-				{
-					// First rising edge -- arm the window.
-					p_button_state->tap_count = 1;
-					p_button_state->first_tap_ms = millis;
-					p_button_state->current_state = 0;
+					p_button_state->release_floor =
+					    millis + ResolvePressFloorMs(p_dev_config, num);
+					p_button_state->current_state = 1;
 				}
 				else
 				{
-					p_button_state->current_state = 0;
+					p_button_state->current_state =
+					    (p_button_state->release_floor > millis) ? 1 : 0;
 				}
 				break;
 			}
@@ -903,9 +969,14 @@ void Gestures_Init (dev_config_t * p_dev_config)
 {
 	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++)
 	{
-		gesture_delay_ms[p] = 0;
-		gesture_claimed[p] = 0;
-		gesture_low_since[p] = 0;
+		has_tap[p] = 0;
+		has_dt[p] = 0;
+		has_normal[p] = 0;
+		gesture[p].state = GESTURE_STATE_IDLE;
+		gesture[p].prev_physical = 0;
+		gesture[p].arm_time = 0;
+		gesture[p].release_time = 0;
+		gesture[p].tap_pulse_until = 0;
 	}
 	for (uint8_t s = 0; s < MAX_BUTTONS_NUM; s++)
 	{
@@ -913,39 +984,114 @@ void Gestures_Init (dev_config_t * p_dev_config)
 		int8_t p = p_dev_config->buttons[s].physical_num;
 		if (p < 0 || p >= MAX_BUTTONS_NUM) continue;
 
-		uint16_t cand = 0;
-		if (t == LONG_PRESS)        cand = p_dev_config->long_press_threshold_ms;
-		else if (t == DOUBLE_TAP)   cand = p_dev_config->double_tap_window_ms;
-		else                        continue;
-
-		if (cand > gesture_delay_ms[p]) gesture_delay_ms[p] = cand;
+		if (t == TAP)             has_tap[p] = 1;
+		else if (t == DOUBLE_TAP) has_dt[p] = 1;
+		else if (t == BUTTON_NORMAL) has_normal[p] = 1;
 	}
 }
 
 /**
-  * @brief  Per-tick sweep: clear gesture_claimed[] entries whose physical
-  *         has been low long enough that any pending sister NORMAL slot's
-  *         DELAY-to-PRESS transition has already resolved. Called from
-  *         ButtonsDebounceProcess once per tick.
-  * @param  millis: current millisecond timestamp (from GetMillis())
+  * @brief  Run the per-physical gesture state machine for every physical
+  *         input that hosts at least one TAP or DOUBLE_TAP slot.
+  *         Issue anpeaco/FreeJoyX#21.
+  *
+  *         Called once per main-loop tick from ButtonsReadLogical, BEFORE
+  *         the per-slot processing. Slot output code in
+  *         LogicalButtonProcessState reads gesture[p].state and
+  *         gesture[p].tap_pulse_until to derive its current_state.
+  * @param  p_dev_config: Pointer to device configuration
+  * @param  millis: current millisecond timestamp
   * @retval None
   */
-static void GestureClaimedSweep (int32_t millis)
+static void GestureProcessAll (dev_config_t * p_dev_config, int32_t millis)
 {
+	const uint16_t tap_cutoff = p_dev_config->tap_cutoff_ms;
+	const uint16_t dt_window = p_dev_config->double_tap_window_ms;
+
 	for (uint8_t p = 0; p < MAX_BUTTONS_NUM; p++)
 	{
-		if (physical_buttons_state[p].current_state == 0)
+		/* Skip physicals with no TAP or DT sister -- pure-NORMAL inputs
+		 * keep their existing standard-timer logic (so per-slot
+		 * delay_timer / press_timer settings still work). */
+		if (!has_tap[p] && !has_dt[p]) continue;
+
+		uint8_t curr = physical_buttons_state[p].current_state;
+		uint8_t rising  = (curr > gesture[p].prev_physical);
+		uint8_t falling = (curr < gesture[p].prev_physical);
+		gesture[p].prev_physical = curr;
+
+		switch (gesture[p].state)
 		{
-			if (gesture_low_since[p] == 0) gesture_low_since[p] = millis;
-			if (gesture_claimed[p] && gesture_delay_ms[p] > 0 &&
-			    (millis - gesture_low_since[p]) > gesture_delay_ms[p])
-			{
-				gesture_claimed[p] = 0;
-			}
-		}
-		else
-		{
-			gesture_low_since[p] = 0;
+			case GESTURE_STATE_IDLE:
+				if (rising)
+				{
+					gesture[p].state = GESTURE_STATE_ARMED;
+					gesture[p].arm_time = millis;
+				}
+				break;
+
+			case GESTURE_STATE_ARMED:
+				if (falling)
+				{
+					if (millis - gesture[p].arm_time <= tap_cutoff)
+					{
+						if (has_dt[p])
+						{
+							gesture[p].state = GESTURE_STATE_WAIT_DT;
+							gesture[p].release_time = millis;
+						}
+						else if (has_tap[p])
+						{
+							gesture[p].tap_pulse_until = millis + MIN_PULSE_MS;
+							gesture[p].state = GESTURE_STATE_IDLE;
+						}
+						else
+						{
+							gesture[p].state = GESTURE_STATE_IDLE;
+						}
+					}
+					else
+					{
+						/* Cutoff timeout already transitioned us out of ARMED
+						 * before this falling could be observed -- but
+						 * defensively fall back to IDLE. */
+						gesture[p].state = GESTURE_STATE_IDLE;
+					}
+				}
+				else if (millis - gesture[p].arm_time > tap_cutoff)
+				{
+					gesture[p].state = has_normal[p]
+					                   ? GESTURE_STATE_NORMAL_HELD
+					                   : GESTURE_STATE_ABORTED;
+				}
+				break;
+
+			case GESTURE_STATE_NORMAL_HELD:
+				if (falling) gesture[p].state = GESTURE_STATE_IDLE;
+				break;
+
+			case GESTURE_STATE_ABORTED:
+				if (falling) gesture[p].state = GESTURE_STATE_IDLE;
+				break;
+
+			case GESTURE_STATE_WAIT_DT:
+				if (rising)
+				{
+					gesture[p].state = GESTURE_STATE_DT_HELD;
+				}
+				else if (millis - gesture[p].release_time > dt_window)
+				{
+					if (has_tap[p])
+					{
+						gesture[p].tap_pulse_until = millis + MIN_PULSE_MS;
+					}
+					gesture[p].state = GESTURE_STATE_IDLE;
+				}
+				break;
+
+			case GESTURE_STATE_DT_HELD:
+				if (falling) gesture[p].state = GESTURE_STATE_IDLE;
+				break;
 		}
 	}
 }
@@ -1047,6 +1193,11 @@ uint8_t ButtonsReadPhysical(dev_config_t * p_dev_config, uint8_t * p_buf)
   */
 void ButtonsReadLogical (dev_config_t * p_dev_config)
 {
+	/* Run the per-physical gesture state machine once before any
+	 * per-slot processing. TAP / DT / NORMAL cases below derive their
+	 * output from gesture[p].state. Issue anpeaco/FreeJoyX#21. */
+	GestureProcessAll(p_dev_config, GetMillis());
+
 	// Process regular buttons
 	for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
 	{
