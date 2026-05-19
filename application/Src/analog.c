@@ -710,8 +710,9 @@ void AxesInit (dev_config_t * p_dev_config)
 
 		/* ADC clock prescaler: PCLK2 = 96 MHz, max ADC clock per F411
 		 * datasheet = 36 MHz. /4 -> 24 MHz, comfortable margin. CCR
-		 * lives in the common ADC register block. */
-		ADC->CCR = (ADC->CCR & ~ADC_CCR_ADCPRE) | (1U << 16);
+		 * lives in the common ADC register block. ADCPRE_0 = bit0 of
+		 * the 2-bit ADCPRE field = 01 = /4. */
+		ADC->CCR = (ADC->CCR & ~ADC_CCR_ADCPRE) | ADC_CCR_ADCPRE_0;
 
 		ADC1->CR2 = 0;
 		ADC1->CR1 = ADC_CR1_SCAN;	/* scan mode, 12-bit (default RES=00) */
@@ -755,13 +756,17 @@ void AxesInit (dev_config_t * p_dev_config)
 		DMA2_Stream4->CR = 0;
 		while (DMA2_Stream4->CR & DMA_SxCR_EN);
 		DMA2_Stream4->PAR = (uint32_t)&ADC1->DR;
+		/* CHSEL = 0 (ADC1), DIR = peripheral->memory: both encoded by
+		 * leaving their fields at zero -- no macro needed for the
+		 * default field value. CMSIS macro naming convention is that
+		 * `<FIELD>_0` sets bit 0 of the field (= field value 01),
+		 * so MSIZE_0 + PSIZE_0 = halfword on both sides. Getting
+		 * this wrong (value 10 = word) is what issue #24 was. */
 		DMA2_Stream4->CR =
-			(0U << 25) |	/* CHSEL = 0 (ADC1) */
-			(2U << 13) |	/* MSIZE = halfword */
-			(2U << 11) |	/* PSIZE = halfword */
-			(1U << 10) |	/* MINC = 1 */
-			(0U <<  6) |	/* DIR  = peripheral->memory */
-			(2U << 16);	/* PL = high priority */
+			DMA_SxCR_MSIZE_0 |	/* MSIZE = halfword */
+			DMA_SxCR_PSIZE_0 |	/* PSIZE = halfword */
+			DMA_SxCR_MINC    |	/* memory pointer increments */
+			DMA_SxCR_PL_1;		/* priority = high (PL = 10) */
 
 		/* Power up ADC1. F4 doesn't need the F1-style ResetCalibration /
 		 * StartCalibration -- factory-trimmed at silicon. */
@@ -823,23 +828,22 @@ void ADC_Conversion (void)
 		for (uint8_t i = 0; i < ADC_CONV_NUM; ++i) {
 			DMA2_Stream4->CR &= ~DMA_SxCR_EN;
 			while (DMA2_Stream4->CR & DMA_SxCR_EN);
-			/* Clear stream 4 LIFCR/HIFCR flags before re-arming. Stream 4
-			 * lives in HISR/HIFCR (streams 4..7). The bit positions for
-			 * stream 4 are TCIF4 = bit 5, HTIF4 = bit 4, TEIF4 = bit 3,
-			 * DMEIF4 = bit 2, FEIF4 = bit 0 -- mask 0x3D. */
-			DMA2->HIFCR = (0x3DU << 0);
+			/* Clear all stream-4 flags before re-arming. Stream 4 lives
+			 * in HISR/HIFCR (streams 4..7 are in the High registers). */
+			DMA2->HIFCR = DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 |
+			              DMA_HIFCR_CTEIF4 | DMA_HIFCR_CDMEIF4 |
+			              DMA_HIFCR_CFEIF4;
 			DMA2_Stream4->M0AR = (uint32_t)&tmp_adc_data[0];
 			DMA2_Stream4->NDTR = adc_cnt;
 			DMA2_Stream4->CR  |= DMA_SxCR_EN;
 
-			/* Software-start the regular sequence. SWSTART is in CR2
-			 * (bit 30 on F4). */
+			/* Software-start the regular sequence. */
 			ADC1->SR = 0;
 			ADC1->CR2 |= ADC_CR2_SWSTART;
 
-			/* Wait for stream-4 transfer-complete (TCIF4 = bit 5 of HISR). */
-			while (!(DMA2->HISR & (1U << 5)));
-			DMA2->HIFCR = (1U << 5);
+			/* Wait for stream-4 transfer-complete. */
+			while (!(DMA2->HISR & DMA_HISR_TCIF4));
+			DMA2->HIFCR = DMA_HIFCR_CTCIF4;
 
 			DMA2_Stream4->CR &= ~DMA_SxCR_EN;
 
