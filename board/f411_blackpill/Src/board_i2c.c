@@ -100,7 +100,7 @@ void I2C_Start(void)
 	 *   CCR = Tpclk1_freq / (2 * 400_000)
 	 *       = 48_000_000 / 800_000 = 60
 	 * Set FS=1 (Fast Mode), DUTY=0 (2/1 ratio). */
-	I2C2->CCR = (1U << 15) | 60;
+	I2C2->CCR = I2C_CCR_FS | 60;
 
 	/* TRISE = (max_rise_time_ns / Tpclk1_ns) + 1. Fast Mode spec:
 	 * 300 ns max rise. At 48 MHz Tpclk1 = 20.83 ns -> TRISE = 14 + 1. */
