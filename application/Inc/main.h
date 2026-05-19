@@ -68,8 +68,8 @@ static const dev_config_t init_config =
 	.button_timer2_ms = 200,					// amount of milliseconds of delay2 for a virtual button
 	.button_timer3_ms = 300,					// amount of milliseconds of delay3 for a virtual button
 	.a2b_debounce_ms = 50,
-	.tap_cutoff_ms = 500,					// TAP release-within cutoff (global)
-	.double_tap_window_ms = 300,			// DOUBLE_TAP max gap between taps (global)
+	.tap_cutoff_ms = 200,					// TAP release-within cutoff (global)
+	.double_tap_window_ms = 200,			// DOUBLE_TAP max gap between taps (global)
 	.button_polling_interval_ticks = 5,
 	.encoder_polling_interval_ticks = 1,
 
