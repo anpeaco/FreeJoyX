@@ -12,7 +12,7 @@
 
 <img src="https://github.com/FreeJoy-Team/FreeJoy/blob/master/images/main.png">
 
-FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a widely configurable USB HID game-device firmware. It allows you to build your own HOTAS, pedals, steering wheel, sim-racing button box, etc., or customize a purchased one. FreeJoyX extends upstream FreeJoy with a second hardware-quadrature encoder, boolean-logic virtual buttons, long-press and double-tap gesture button types, and a port to the STM32F411 BlackPill alongside the original BluePill.
+FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a widely configurable USB HID game-device firmware. It allows you to build your own HOTAS, pedals, steering wheel, sim-racing button box, etc., or customize a purchased one. FreeJoyX extends upstream FreeJoy with a second hardware-quadrature encoder, boolean-logic virtual buttons, tap and double-tap gesture button types, and a port to the STM32F411 BlackPill alongside the original BluePill.
 
 ## Supported boards
 
@@ -21,7 +21,7 @@ FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a w
 | `f103` (BluePill) | STM32F103C8T6 | StdPeriph | USB-FS-Device |
 | `f411` (WeAct BlackPill V3.x) | STM32F411CEU6 | STM32 LL (+ HAL flash driver) | ST USB Device Library |
 
-Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes. Wire format is currently **v1.7.8** (`FIRMWARE_VERSION 0x1780`).
+Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes (with the configurator's cross-board converter to bridge the gap). Wire format generation is currently `FIRMWARE_VERSION 0x0020` (released as **v0.1.x**); the prior `0x0010` generation and the upstream `0x17XX` lineage are still readable and forward-migratable by the configurator.
 
 ## Getting started
 
@@ -34,7 +34,7 @@ FreeJoyX supports the following external periphery:
 - 8 analog inputs (12 bit output resolution)
 - axis-to-buttons function (up to 12 buttons per axis)
 - buttons/encoders to axis function
-- 128 digital inputs (buttons, toggle switches, hat povs, encoders, **logic-driven virtual buttons**, **long-press**, **double-tap**)
+- 128 digital inputs (buttons, toggle switches, hat povs, encoders, **logic-driven virtual buttons**, **tap**, **double-tap**)
 - 8 shift modifiers (bumped from 5 in v1.7.8)
 - 4 hat povs
 - **2 hardware-quadrature (fast) encoders** — Enc 1 on TIM1 (PA8/PA9), Enc 2 on TIM4 (PB6/PB7), opt-in
@@ -76,11 +76,11 @@ Up to 128 digital inputs can be wired as single inputs (tied to VCC or GND), but
 * Radio buttons
 * Sequential buttons
 * 8 shifts
-* **Logic** — boolean function of two physical buttons (`AND`, `OR`, `NOT`, `NOR`, `NAND`, `XOR`, `A AND NOT B`); ON-ON-ON 3-position switches with 2 GPIOs and binary-encoded rotary switches are first-class use cases
-* **Long press** — hold-style virtual button that fires after a global threshold (default 500 ms)
-* **Double tap** — hold-while-second-tap-held virtual button within a global window (default 300 ms)
+* **Logic** — boolean function of two physical buttons (`AND`, `OR`, `NAND`, `NOR`, `XOR`, `XNOR`); ON-ON-ON 3-position switches with 2 GPIOs and binary-encoded rotary switches are first-class use cases. (`NOT` and `A AND NOT B` exist in the wire-format enum for back-compat with shipped configs but are no longer offered in the configurator picker — `NOT A` duplicates `NORMAL` + invert, and the inhibit-gate pattern can be built from `AND` with a NORMAL+invert slot for B.)
+* **Tap** — release-within-cutoff virtual button: fires briefly when the physical is pressed and released within the global cutoff window (default 200 ms). Holding past the cutoff aborts without firing, letting any sister `NORMAL` slot take the hold.
+* **Double tap** — hold-while-second-tap-held virtual button within a global window (default 200 ms). The output mirrors the physical while the second tap is held.
 
-Long-press and double-tap can coexist with `NORMAL` on the same physical input; gesture wins, so `NORMAL` is suppressed if the gesture fires within the window. Mixing them with `TOGGLE`/`RADIO`/`SEQUENTIAL`/`POV`/`ENCODER`/`LOGIC` on the same physical input is blocked by the configurator.
+Tap and double-tap can coexist with `NORMAL` on the same physical input; gesture wins, so `NORMAL` is suppressed if the gesture fires within the window. Mixing them with `TOGGLE`/`RADIO`/`SEQUENTIAL`/`POV`/`ENCODER`/`LOGIC` on the same physical input is blocked by the configurator's per-physical coexistence filter.
 
 ## Building
 
@@ -98,7 +98,7 @@ make TARGET=f103 install-firmware
 make TARGET=f411 install-firmware
 
 # Cross-target release: builds both, copies into the configurator's firmware folder
-make release RELEASE_VERSION=v1.7.8
+make release RELEASE_VERSION=v0.1.1
 ```
 
 Output binaries are named `freejoyx-<board>-<app|boot>-<version>.bin` so the configurator's flasher picks the correct image per connected board.
@@ -125,8 +125,8 @@ Three GitHub Actions workflows run on every push:
 To cut a release locally:
 
 ```bash
-git tag v0.0.3
-git push origin v0.0.3
+git tag v0.1.1
+git push origin v0.1.1
 # Release workflow builds + publishes the binaries automatically.
 ```
 
