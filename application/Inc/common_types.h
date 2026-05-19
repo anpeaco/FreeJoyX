@@ -265,6 +265,7 @@ enum
 	LOGIC_OP_NAND,
 	LOGIC_OP_XOR,
 	LOGIC_OP_A_AND_NOT_B,
+	LOGIC_OP_XNOR,             /* added v0.1.x; old firmware hits default == 0 if it sees this value */
 	LOGIC_OP_COUNT,
 };
 typedef uint8_t logic_op_t;

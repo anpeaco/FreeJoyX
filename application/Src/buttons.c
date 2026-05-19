@@ -781,6 +781,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					case LOGIC_OP_NAND:        computed = !(a &&  b); break;
 					case LOGIC_OP_XOR:         computed =   a ^   b;  break;
 					case LOGIC_OP_A_AND_NOT_B: computed =  (a && !b); break;
+					case LOGIC_OP_XNOR:        computed = !(a ^   b); break;
 					default:                   computed = 0;          break;
 				}
 
