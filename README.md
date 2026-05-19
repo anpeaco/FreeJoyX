@@ -103,6 +103,17 @@ make release RELEASE_VERSION=v1.7.8
 
 Output binaries are named `freejoyx-<board>-<app|boot>-<version>.bin` so the configurator's flasher picks the correct image per connected board.
 
+## Config write rejection codes
+
+When the configurator writes a config to the device, the firmware validates the incoming `dev_config_t` after the last packet arrives. On rejection it returns a single byte in `REPORT_ID_CONFIG_OUT`:
+
+| Code | Reason | User action |
+|------|--------|-------------|
+| `0xFE` | Wire-format generation mismatch (`firmware_version & 0xFFF0` doesn't match the running firmware) | Reflash to a firmware version on the same wire-format generation as the config, or load a config saved at the running firmware's generation |
+| `0xFD` | `board_id` mismatch (config was saved for a different board) | Load a config saved for the connected board, or use the configurator's cross-board converter on the load path |
+
+Older firmware that predates the split (anpeaco/FreeJoyX#27) sends `0xFE` for both cases. Newer configurators handle both byte codes; older configurators silently ignore `0xFD`. See `application/Src/usb_app.c` "Last packet received. Check version + board_id" for the firmware-side logic.
+
 ## Continuous integration
 
 Three GitHub Actions workflows run on every push:
