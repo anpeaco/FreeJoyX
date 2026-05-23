@@ -22,6 +22,15 @@
 
 #include <string.h>
 
+/* Active size of the joystick HID report descriptor. Set by
+ * USBD_FreeJoy_SetJoyReportDescSize() at USB init from BuildJoyReportDesc's
+ * return value; mirrored into the composite config descriptor's
+ * wDescriptorLength bytes and the standalone joystick HID class descriptor.
+ * Initialised to the compile-time max so the bootloader build (which leaves
+ * the descriptor in its static full-shape form) still works without calling
+ * the setter. */
+static uint16_t joy_report_desc_size = FREEJOY_JOY_REPORT_DESC_SIZE;
+
 /*============================================================================
  *  Combined configuration descriptor (66 bytes)
  *
@@ -268,7 +277,7 @@ static uint8_t USBD_FreeJoy_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef
 	uint8_t        *idle_state    = (iface == 0U) ? &h->joy_idle_state    : &h->cfg_idle_state;
 	uint8_t        *alt_setting   = (iface == 0U) ? &h->joy_alt_setting   : &h->cfg_alt_setting;
 	uint8_t        *report_desc   = (iface == 0U) ? FreeJoy_JoyReportDesc : FreeJoy_CfgReportDesc;
-	uint16_t        report_size   = (iface == 0U) ? FREEJOY_JOY_REPORT_DESC_SIZE
+	uint16_t        report_size   = (iface == 0U) ? joy_report_desc_size
 	                                              : FREEJOY_CFG_REPORT_DESC_SIZE;
 	uint8_t        *hid_desc      = (iface == 0U) ? USBD_FreeJoy_JoyHidDesc
 	                                              : USBD_FreeJoy_CfgHidDesc;
@@ -511,4 +520,30 @@ uint8_t USBD_FreeJoy_ReceivePacket(USBD_HandleTypeDef *pdev)
 	(void)USBD_LL_PrepareReceive(pdev, FREEJOY_CFG_EPOUT_ADDR,
 	                             h->ep2_out_buf, FREEJOY_OUTREPORT_BUF_SIZE);
 	return (uint8_t)USBD_OK;
+}
+
+/* Composite-descriptor offsets for the joystick HID class descriptor's
+ * wDescriptorLength field. See USBD_FreeJoy_CfgDesc layout: 9-byte config
+ * header + 9-byte interface-0 descriptor puts the HID class descriptor at
+ * offset 18, and wDescriptorLength lives at offsets 25 (LSB) / 26 (MSB)
+ * within that block. */
+#define FREEJOY_CFGDESC_JOY_HID_WDESC_LSB   25U
+#define FREEJOY_CFGDESC_JOY_HID_WDESC_MSB   26U
+
+/* Standalone HID class descriptor layout: wDescriptorLength sits at
+ * offsets 7 (LSB) / 8 (MSB) of the 9-byte block. */
+#define FREEJOY_JOY_HID_DESC_WDESC_LSB      7U
+#define FREEJOY_JOY_HID_DESC_WDESC_MSB      8U
+
+void USBD_FreeJoy_SetJoyReportDescSize(uint16_t size)
+{
+	if (size == 0U || size > FREEJOY_JOY_REPORT_DESC_SIZE) return;
+
+	joy_report_desc_size = size;
+
+	USBD_FreeJoy_CfgDesc[FREEJOY_CFGDESC_JOY_HID_WDESC_LSB] = LOBYTE(size);
+	USBD_FreeJoy_CfgDesc[FREEJOY_CFGDESC_JOY_HID_WDESC_MSB] = HIBYTE(size);
+
+	USBD_FreeJoy_JoyHidDesc[FREEJOY_JOY_HID_DESC_WDESC_LSB] = LOBYTE(size);
+	USBD_FreeJoy_JoyHidDesc[FREEJOY_JOY_HID_DESC_WDESC_MSB] = HIBYTE(size);
 }

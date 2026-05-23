@@ -4,6 +4,7 @@
 #include "usb_pwr.h"
 
 #include "config.h"
+#include "joy_report_desc.h"
 #include "string.h"
 
 /* Private typedef -----------------------------------------------------------*/
@@ -311,146 +312,26 @@ void Get_VidPid(void)
 
 /*******************************************************************************
 * Function Name  : Get_ReportDesc.
-* Description    : Change VID and PID.
-* Input          : None.
-* Output         : None.
-* Return         : Report size.
+* Description    : Rebuild the joystick HID report descriptor from the active
+*                  app_config so the descriptor declares exactly the buttons /
+*                  axes / POVs the per-tick payload in usb_app.c emits. The
+*                  shared builder lives in application/Src/joy_report_desc.c
+*                  -- F411's USB init calls the same helper.
+* Return         : Report size (bytes written into JoystickHID_ReportDescriptor).
 *******************************************************************************/
 uint8_t Get_ReportDesc(void)
 {
 	app_config_t tmp_app_config;
-	uint16_t i = 0;
-	
 	AppConfigGet(&tmp_app_config);
-	
-	// ---- Header ---- //
-	JoystickHID_ReportDescriptor[i++] = 0x05;												// User Page
-	JoystickHID_ReportDescriptor[i++] = 0x01;												// (Generic Desktop)
-	JoystickHID_ReportDescriptor[i++] = 0x09;												// Usage
-	JoystickHID_ReportDescriptor[i++] = 0x04;												// (Joystick)
-	JoystickHID_ReportDescriptor[i++] = 0xA1;												// Collection
-	JoystickHID_ReportDescriptor[i++] = 0x01;												// (Application)
-	JoystickHID_ReportDescriptor[i++] = 0x85;												// Report ID
-	JoystickHID_ReportDescriptor[i++] = REPORT_ID_JOY;							// (REPORT_ID_JOY)
 
-	// dummy button for empty config
-	if (IsAppConfigEmpty(&tmp_app_config))
-	{
-		JoystickHID_ReportDescriptor[i++] = 0x05;												// Usage Page
-		JoystickHID_ReportDescriptor[i++] = 0x09;												// (Button)
-		JoystickHID_ReportDescriptor[i++] = 0x19;												// Usage Minimum
-		JoystickHID_ReportDescriptor[i++] = 0x01;												// (Button 1)
-		JoystickHID_ReportDescriptor[i++] = 0x29;												// Usage Maximum
-		JoystickHID_ReportDescriptor[i++] = 1;	
-		JoystickHID_ReportDescriptor[i++] = 0x15;												// Logical Minimum
-		JoystickHID_ReportDescriptor[i++] = 0x00;												// (0)
-		JoystickHID_ReportDescriptor[i++] = 0x25;												// Logical Maximum
-		JoystickHID_ReportDescriptor[i++] = 0x01;												// (1)
-		JoystickHID_ReportDescriptor[i++] = 0x75;												// Report Size
-		JoystickHID_ReportDescriptor[i++] = 0x01;												// (1)
-		JoystickHID_ReportDescriptor[i++] = 0x95;												// Report Count
-		JoystickHID_ReportDescriptor[i++] = 8;	
-		JoystickHID_ReportDescriptor[i++] = 0x81;												// Input
-		JoystickHID_ReportDescriptor[i++] = 0x02;												// (Data, Var, Abs)
-	}
-	else
-	{
-		// --- Buttons section --- //
-		if (tmp_app_config.buttons_cnt > 0)
-		{
-			JoystickHID_ReportDescriptor[i++] = 0x05;												// Usage Page
-			JoystickHID_ReportDescriptor[i++] = 0x09;												// (Button)
-			JoystickHID_ReportDescriptor[i++] = 0x19;												// Usage Minimum
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (Button 1)
-			JoystickHID_ReportDescriptor[i++] = 0x29;												// Usage Maximum
-			JoystickHID_ReportDescriptor[i++] = tmp_app_config.buttons_cnt;	
-			JoystickHID_ReportDescriptor[i++] = 0x15;												// Logical Minimum
-			JoystickHID_ReportDescriptor[i++] = 0x00;												// (0)
-			JoystickHID_ReportDescriptor[i++] = 0x25;												// Logical Maximum
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (1)
-			JoystickHID_ReportDescriptor[i++] = 0x75;												// Report Size
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (1)
-			JoystickHID_ReportDescriptor[i++] = 0x95;												// Report Count
-			JoystickHID_ReportDescriptor[i++] = ((tmp_app_config.buttons_cnt - 1)/8 + 1) * 8;	
-			JoystickHID_ReportDescriptor[i++] = 0x81;												// Input
-			JoystickHID_ReportDescriptor[i++] = 0x02;												// (Data, Var, Abs)
-		}
-		
-		// --- Axis section --- //
-		if (tmp_app_config.axis_cnt > 0)
-		{	
-			JoystickHID_ReportDescriptor[i++] = 0x05;												// User Page
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (Generic Desktop)	
-			for (uint8_t axis = 0; axis < 6; axis++)
-			{
-				if (tmp_app_config.axis & (1<<axis))
-				{
-					JoystickHID_ReportDescriptor[i++] = 0x09;										// Usage
-					JoystickHID_ReportDescriptor[i++] = 0x30 + axis;						// Main axis
-				}
-			}
-			for (uint8_t axis = 6; axis < 8; axis++)
-			{
-				if (tmp_app_config.axis & (1<<axis))
-				{
-					JoystickHID_ReportDescriptor[i++] = 0x09;										// Usage
-					JoystickHID_ReportDescriptor[i++] = 0x36;										// Slider axis
-				}
-			}
-			JoystickHID_ReportDescriptor[i++] = 0x16;												// Logical Minimum
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (-32767)
-			JoystickHID_ReportDescriptor[i++] = 0x80;												// 
-			JoystickHID_ReportDescriptor[i++] = 0x26;												// Logical Maximum
-			JoystickHID_ReportDescriptor[i++] = 0xFF;												// (32767)
-			JoystickHID_ReportDescriptor[i++] = 0x7F;												//
-			JoystickHID_ReportDescriptor[i++] = 0x75;												// Report Size
-			JoystickHID_ReportDescriptor[i++] = 0x10;												// (16)		
-			JoystickHID_ReportDescriptor[i++] = 0x95;												// Report count
-			JoystickHID_ReportDescriptor[i++] = tmp_app_config.axis_cnt;		
-			JoystickHID_ReportDescriptor[i++] = 0x81;												// Input
-			JoystickHID_ReportDescriptor[i++] = 0x02;												// (Data, Var, Abs)
-		}
-		
-		// --- POV section --- //
-		if (tmp_app_config.pov_cnt > 0)
-		{
-			JoystickHID_ReportDescriptor[i++] = 0x09;												// Usage
-			JoystickHID_ReportDescriptor[i++] = 0x39;												// (Hat switch)
-			JoystickHID_ReportDescriptor[i++] = 0x15;												// Logical Minimum
-			JoystickHID_ReportDescriptor[i++] = 0x00;												// (0)
-			JoystickHID_ReportDescriptor[i++] = 0x25;												// Logical Maximum
-			JoystickHID_ReportDescriptor[i++] = 0x07;												// (7)
-			JoystickHID_ReportDescriptor[i++] = 0x35;												// Physical Minimum
-			JoystickHID_ReportDescriptor[i++] = 0x00;												// (0)
-			JoystickHID_ReportDescriptor[i++] = 0x46;												// Physical Maximum
-			JoystickHID_ReportDescriptor[i++] = 0x3B;												// (315)
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (0)
-			JoystickHID_ReportDescriptor[i++] = 0x65;												// Unit
-			JoystickHID_ReportDescriptor[i++] = 0x12;												// (SI Rot:Angular Pos)
-			JoystickHID_ReportDescriptor[i++] = 0x75;												// Report Size
-			JoystickHID_ReportDescriptor[i++] = 0x08;												// (8)
-			JoystickHID_ReportDescriptor[i++] = 0x95;												// Report Count
-			JoystickHID_ReportDescriptor[i++] = 0x01;												// (1)			
-			JoystickHID_ReportDescriptor[i++] = 0x81;												// Input
-			JoystickHID_ReportDescriptor[i++] = 0x02;												// (Data, Var, Abs)
-			
-			for (uint8_t j=1; j<tmp_app_config.pov_cnt;	 j++)
-			{
-				JoystickHID_ReportDescriptor[i++] = 0x09;												// Usage
-				JoystickHID_ReportDescriptor[i++] = 0x39;												// (Hat switch)
-				JoystickHID_ReportDescriptor[i++] = 0x81;												// Input
-				JoystickHID_ReportDescriptor[i++] = 0x02;												// (Data, Var, Abs)
-			}
-		}
-	}
-	
-	JoystickHID_ReportDescriptor[i++] = 0xc0;													// End Collection
-	
-	// Set Report Size in Config descriptor
-	Composite_ConfigDescriptor[25] = LOBYTE(i);
-	Composite_ConfigDescriptor[26] = HIBYTE(i);
-	
-	return i;
+	uint16_t size = BuildJoyReportDesc(JoystickHID_ReportDescriptor, &tmp_app_config);
+
+	/* Patch wDescriptorLength inside the composite config descriptor so the
+	 * HID class descriptor advertises the correct report-descriptor size. */
+	Composite_ConfigDescriptor[25] = LOBYTE(size);
+	Composite_ConfigDescriptor[26] = HIBYTE(size);
+
+	return (uint8_t)size;
 }
 
 void USB_HW_Init(void)

@@ -104,9 +104,20 @@ uint8_t USBD_FreeJoy_ReceivePacket(USBD_HandleTypeDef *pdev);
  * OUT buffer. report_buffer[0] is the report ID. */
 void FreeJoy_CfgOutEvent(uint8_t *report_buffer);
 
-/* Per-interface report descriptors, defined in usbd_freejoy_if.c. */
+/* Per-interface report descriptors, defined in usbd_freejoy_if.c. The
+ * joystick descriptor is regenerated at runtime from app_config_t (issue
+ * anpeaco/FreeJoyX#45) -- the buffer is sized to hold the worst-case
+ * full-shape descriptor, and the active size is tracked separately. */
 extern uint8_t FreeJoy_JoyReportDesc[FREEJOY_JOY_REPORT_DESC_SIZE];
 extern uint8_t FreeJoy_CfgReportDesc[FREEJOY_CFG_REPORT_DESC_SIZE];
+
+/* Record the joystick HID report descriptor's actual size and propagate
+ * it into the composite config descriptor's wDescriptorLength field plus
+ * the standalone HID class descriptor returned to the host on
+ * GET_DESCRIPTOR(HID). Called from board_usb.c::Board_USB_Init after
+ * BuildJoyReportDesc fills FreeJoy_JoyReportDesc. Must run before
+ * USBD_Init kicks off enumeration. */
+void USBD_FreeJoy_SetJoyReportDescSize(uint16_t size);
 
 #ifdef __cplusplus
 }

@@ -52,6 +52,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/leds.c \
 ../application/Src/main.c \
 ../application/Src/usb_app.c \
+../application/Src/joy_report_desc.c \
 ../application/Src/periphery.c \
 ../application/Src/tle5011.c \
 ../application/Src/tle5012.c \

@@ -122,11 +122,13 @@ Three GitHub Actions workflows run on every push:
 - **`header-sync.yml`** — clones [`anpeaco/FreeJoyXConfiguratorQt`](https://github.com/anpeaco/FreeJoyXConfiguratorQt) as a sibling and diffs `common_types.h` + `common_defines.h` after stripping comments and whitespace. Catches wire-format drift between firmware and configurator. Firmware-only sections are wrapped in `/* SYNC_SKIP_BEGIN ... SYNC_SKIP_END */` markers so the check ignores them. A mirror workflow runs in the configurator repo on its own pushes; both sides catch drift independently.
 - **`release.yml`** — on `v*` tag push, runs `make release RELEASE_VERSION=<tag>` and publishes the four binaries (F103 app + boot, F411 app + boot) to a GitHub Release with auto-generated notes.
 
+Tagging the same `vX.Y.Z` here and on the [configurator repo](https://github.com/anpeaco/FreeJoyXConfiguratorQt) in lockstep produces a matched release pair: four firmware `.bin`s here, plus the configurator's `FreeJoyXConfiguratorQt-linux-<tag>.tar.gz` and `FreeJoyXConfiguratorQt-windows-<tag>.zip` (self-contained `windeployqt` bundle) on that side. The configurator's release workflow additionally supports `workflow_dispatch` for retro-adding a missing platform asset to an existing release.
+
 To cut a release locally:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 # Release workflow builds + publishes the binaries automatically.
 ```
 

@@ -23,12 +23,32 @@
 #include "usbd_freejoy_class.h"
 #include "common_defines.h"
 
+#ifndef BOOTLOADER
+#include "joy_report_desc.h"
+#include "config.h"
+#endif
+
 extern USBD_DescriptorsTypeDef FreeJoy_Desc;     /* usbd_freejoy_desc.c */
 
 USBD_HandleTypeDef hUsbDeviceFS;
 
 void Board_USB_Init(void)
 {
+#ifndef BOOTLOADER
+	/* Rebuild the joystick HID report descriptor to match the per-tick
+	 * payload usb_app.c emits (only the configured buttons / axes / POVs).
+	 * Without this, Windows fetches the max-shape descriptor at enumeration
+	 * and discards the short reports the device actually sends -- joy.cpl
+	 * shows axes stuck at center even though the configurator sees them
+	 * moving via REPORT_ID_PARAM (issue anpeaco/FreeJoyX#45). The composite
+	 * descriptor's wDescriptorLength and the standalone HID class descriptor
+	 * are patched in usbd_freejoy_class.c -- helper exposed there. */
+	app_config_t tmp_app_config;
+	AppConfigGet(&tmp_app_config);
+	uint16_t desc_size = BuildJoyReportDesc(FreeJoy_JoyReportDesc, &tmp_app_config);
+	USBD_FreeJoy_SetJoyReportDescSize(desc_size);
+#endif
+
 	USBD_Init(&hUsbDeviceFS, &FreeJoy_Desc, 0);
 	USBD_RegisterClass(&hUsbDeviceFS, &USBD_FreeJoy_CompositeClass);
 	USBD_Start(&hUsbDeviceFS);

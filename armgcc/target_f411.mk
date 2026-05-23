@@ -81,6 +81,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/analog.c \
 ../application/Src/sensor_dispatch.c \
 ../application/Src/usb_app.c \
+../application/Src/joy_report_desc.c \
 ../application/Src/periphery.c \
 ../application/Src/axis_to_buttons.c \
 ../application/Src/bitmap.c \

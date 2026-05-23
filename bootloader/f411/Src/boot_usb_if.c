@@ -54,14 +54,22 @@ static uint16_t  firmware_len = 0;
 static uint16_t  crc_in       = 0;
 
 /* HID report descriptor. Vendor-defined collection with REPORT_ID 4
- * carrying a 63-byte input + 63-byte output. Sized exactly to its
- * 31 valid HID items -- USBD_CUSTOM_HID_REPORT_DESC_SIZE is overridden
- * to 31 in the bootloader build (armgcc/makefile.boot). The static
- * assert below pins the array length to that macro so the bytes the
- * Cube CustomHID class library reports back to the host as
- * wDescriptorLength match the descriptor exactly. Without that pin,
- * trailing zeros from a longer declared length get parsed as malformed
- * HID items and Windows rejects the device with Code 10. */
+ * carrying a 2-byte input (count word / status code) + 63-byte output
+ * (image-chunk header + data). The INPUT count MUST match what the
+ * device actually transmits via USBD_CUSTOM_HID_SendReport(reply, 3)
+ * = 1 ID + 2 data. Declaring 63 here when the device sends 2 causes
+ * Windows to drop the short packet -- the host waits for a 64-byte
+ * report that never arrives. F103 bootloader's report descriptor uses
+ * IN count 2 for exactly this reason (see bootloader/Src/usb_desc.c).
+ *
+ * Sized exactly to its 31 valid HID items --
+ * USBD_CUSTOM_HID_REPORT_DESC_SIZE is overridden to 31 in
+ * armgcc/makefile.boot. The static assert below pins the array length
+ * to that macro so the bytes the Cube CustomHID class library reports
+ * back to the host as wDescriptorLength match the descriptor exactly.
+ * Without that pin, trailing zeros from a longer declared length get
+ * parsed as malformed HID items and Windows rejects the device with
+ * Code 10. */
 __ALIGN_BEGIN static uint8_t Boot_ReportDesc[] __ALIGN_END = {
 	0x06, 0x00, 0xFF,             /* USAGE_PAGE (Vendor Defined 1) */
 	0x09, 0x01,                   /* USAGE (Vendor Usage 1) */
@@ -72,7 +80,7 @@ __ALIGN_BEGIN static uint8_t Boot_ReportDesc[] __ALIGN_END = {
 	0x15, 0x00,                   /*   LOGICAL_MINIMUM (0) */
 	0x26, 0xFF, 0x00,             /*   LOGICAL_MAXIMUM (255) */
 	0x75, 0x08,                   /*   REPORT_SIZE (8) */
-	0x95, 0x3F,                   /*   REPORT_COUNT (63) */
+	0x95, 0x02,                   /*   REPORT_COUNT (2) -- matches SendReport(.., 3) */
 	0x81, 0x00,                   /*   INPUT (Data,Ary,Abs) */
 
 	0x09, 0x03,                   /*   USAGE (Vendor Usage 3) */
