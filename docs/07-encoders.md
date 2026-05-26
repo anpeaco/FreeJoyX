@@ -30,7 +30,9 @@ FreeJoy supports two encoder implementations:
 
 `encoder_state_t` tracks `cnt` (the accumulated count), `dir` / `last_dir`
 (direction), `state` (the quadrature state machine), and `time_last`. The `cnt` is
-what downstream code reads.
+what downstream code reads. The decoder itself is a lookup-table state machine —
+`(prev_AB << 2) | curr_AB` indexes a 16-entry direction table; see
+[State machines](state-machines.md).
 
 ## How an encoder becomes output
 

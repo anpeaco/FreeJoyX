@@ -44,6 +44,9 @@ treat a mismatch as a docs bug and fix it.
 12. [The two boards: F103 vs F411](12-f103-vs-f411.md)
 13. [Repos, build & CI](13-repos-and-build.md)
 
+### Cross-cutting
+- [State machines](state-machines.md) — a pattern shared by buttons, encoders, USB & DFU
+
 ### Deep dives
 - [Trace: a button press, end to end](deep-dives/trace-button-press.md)
 - [Trace: a config write, end to end](deep-dives/trace-config-write.md)

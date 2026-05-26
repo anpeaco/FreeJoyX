@@ -94,5 +94,8 @@ The live-diagnostic stream (`params_report_t`) additionally exposes
 states) — that's what the configurator's live preview and Sequential-Assign feature
 read.
 
+The TAP / DOUBLE_TAP / TOGGLE logic is best understood as a family of small state
+machines over one debounced input — see [State machines](state-machines.md).
+
 ---
 Next: [Layer 7 — Encoders](07-encoders.md)
