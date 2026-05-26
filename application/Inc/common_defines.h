@@ -25,7 +25,7 @@
  * 1.0.0 when the project is judged stable. See issue anpeaco/FreeJoyX#18. */
 #define FREEJOYX_VERSION_MAJOR              0
 #define FREEJOYX_VERSION_MINOR              1
-#define FREEJOYX_VERSION_PATCH              2
+#define FREEJOYX_VERSION_PATCH              3
 #define FREEJOYX_VER_STR_HELPER(x)          #x
 #define FREEJOYX_VER_STR(x)                 FREEJOYX_VER_STR_HELPER(x)
 #define FREEJOYX_VERSION                    FREEJOYX_VER_STR(FREEJOYX_VERSION_MAJOR) "." \
@@ -38,7 +38,12 @@
  * drifts without bumping these. Sister rule lives in CLAUDE.md
  * ("Wire-format archival rule"). */
 #define FREEJOY_DEV_CONFIG_SIZE				1580
-#define FREEJOY_PARAMS_REPORT_SIZE			72
+/* 72 -> 88: params_report_t gained detect_axis_raw[MAX_AXIS_NUM] (8 * int16)
+ * for axis auto-detect (AXIS_DETECT_PLAN.md). params-report-only change --
+ * dev_config_t is untouched, so no FIRMWARE_VERSION 0xFFF0 cross / factory
+ * reset; the field is appended (prefix-compatible) and gated on
+ * freejoyx_version >= 0.1.3. */
+#define FREEJOY_PARAMS_REPORT_SIZE			88
 
 /* Maximum number of shift modifiers. v1.7.8: bumped 5 -> 8 to match
  * button_t.shift_modificator's widened :4 field (encodes 0=none, 1..8).

@@ -649,6 +649,15 @@ typedef struct
 	uint8_t							freejoyx_version_major;
 	uint8_t							freejoyx_version_minor;
 	uint8_t							freejoyx_version_patch;
+	/* Axis auto-detect (AXIS_DETECT_PLAN.md): raw value of every pin the
+	 * device samples as AXIS_ANALOG, indexed by PIN index (0..7 = PA0..PA7
+	 * = ADC1 IN0..IN7), on the AXIS_MIN..MAX scale (same as raw_axis_data).
+	 * AXIS_MIN_VALUE for any pin not currently sampled. Lets the
+	 * configurator detect a rotated pot even when it isn't yet bound to a
+	 * logical axis (raw_axis_data only covers mapped axes). Appended at the
+	 * end so older configurators that read the prefix are unaffected; new
+	 * configurators gate reading it on freejoyx_version >= 0.1.3. */
+	analog_data_t				detect_axis_raw[MAX_AXIS_NUM];
 
 } params_report_t;
 

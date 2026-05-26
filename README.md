@@ -64,6 +64,14 @@ FreeJoyX supports up to 8 analog inputs at pins A0–A7 and digital sensors as a
 * Buttons from axes
 * Axes from buttons/encoders
 
+Since **v0.1.3** the params report carries `detect_axis_raw[]` — a raw value
+per `AXIS_ANALOG` pin (PA0–PA7), sampled whether or not an axis sources the
+pin — so the configurator's rotate-to-detect can identify an analog pot even
+before it's mapped to a logical axis (the analog equivalent of the physical
+button bitmap). Params-report-only change: `dev_config_t` is unchanged, so no
+factory reset. External SPI/I2C sensors are not covered (their addressing is
+axis-bound). See `AXIS_DETECT_PLAN.md`.
+
 ## Buttons
 
 Up to 128 digital inputs can be wired as single inputs (tied to VCC or GND), button matrices, shift register inputs, or axis-to-buttons inputs. Each slot can be configured as:

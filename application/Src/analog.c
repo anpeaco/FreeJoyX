@@ -63,6 +63,14 @@ int32_t	axis_trim_value[MAX_AXIS_NUM];
 
 uint8_t adc_cnt = 0;
 uint8_t sensors_cnt = 0;
+
+/* Axis auto-detect (AXIS_DETECT_PLAN.md): map from ADC DMA rank to the pin
+ * index it samples (0..7 = PA0..PA7). Built in AxesInit over EVERY pin
+ * tagged AXIS_ANALOG -- including ones no axis sources -- so the
+ * configurator can detect a rotated-but-unmapped pot. analog_rank_cnt is
+ * the number of analog pins sampled (== adc_cnt). */
+uint8_t analog_rank_pin[MAX_AXIS_NUM];
+uint8_t analog_rank_cnt = 0;
 	
 /* ADC channel index per axis. F1 StdPeriph defined ADC_Channel_0 = 0,
  * etc., so the literal 0..7 here is bit-identical to what was there
@@ -430,10 +438,11 @@ void AxesInit (dev_config_t * p_dev_config)
 			{
 				if (p_dev_config->axis_config[k].source_main == i && sensors_cnt < MAX_AXIS_NUM)
 				{
-					sensors[sensors_cnt].type = ANALOG;			
+					sensors[sensors_cnt].type = ANALOG;
 					sensors[sensors_cnt].source = i;
 					sensors_cnt++;
-					adc_cnt++;
+					/* adc_cnt is no longer counted here -- it's recomputed
+					 * below over ALL AXIS_ANALOG pins (auto-detect). */
 					break;
 				}
 			}
@@ -606,24 +615,33 @@ void AxesInit (dev_config_t * p_dev_config)
 		}
 	}
 	
+	/* Rank EVERY pin tagged AXIS_ANALOG (pins 0..7 = PA0..PA7), whether or
+	 * not an axis sources it, so unmapped pots are sampled for axis
+	 * auto-detect. Ranks follow pin-index order, matching the ADC sequence
+	 * built below; analog_rank_pin maps a DMA rank back to its pin for
+	 * params_report.detect_axis_raw. Sourced analog sensors get their
+	 * curr_channel set to the same rank (AxesProcess reads adc_data via it).
+	 * adc_cnt is set here (reset each call) -- it counts analog pins now,
+	 * not just sourced ones. */
+	analog_rank_cnt = 0;
+	for (uint8_t pin = 0; pin < MAX_AXIS_NUM; pin++)
+	{
+		if (p_dev_config->pins[pin] != AXIS_ANALOG) continue;
+		for (int i = 0; i < sensors_cnt; i++)
+		{
+			if (sensors[i].type == ANALOG && sensors[i].source == pin)
+			{
+				sensors[i].curr_channel = analog_rank_cnt;
+			}
+		}
+		analog_rank_pin[analog_rank_cnt] = pin;
+		analog_rank_cnt++;
+	}
+	adc_cnt = analog_rank_cnt;
+
 	// Init ADC
 	if (adc_cnt > 0)
 	{
-		// Ranking ADC sensors
-		uint8_t rank = 0;	
-		for (uint8_t adc=0; adc<MAX_AXIS_NUM; adc++)
-		{
-			uint8_t is_present = 0;
-			for (int i=0; i<sensors_cnt; i++)
-			{ 
-				if (sensors[i].type == ANALOG && sensors[i].source == adc)
-				{
-					sensors[i].curr_channel = rank;
-					is_present = 1;
-				}			
-			}
-			if (is_present) rank++;
-		}
 		
 #ifdef BOARD_F103_BLUEPILL
 		/* ADC1 configuration ------------------------------------------------------*/
@@ -638,21 +656,15 @@ void AxesInit (dev_config_t * p_dev_config)
 		/* Enable ADC1 DMA */
 		ADC_DMACmd(ADC1, ENABLE);
 
-		// Configure ADC channels
+		// Configure ADC channels -- every AXIS_ANALOG pin (sourced or not),
+		// in pin-index order so ranks match analog_rank_pin[] above.
 		uint8_t tmp_rank = 1;
 		for (int i=0; i<MAX_AXIS_NUM; i++)
 		{
 			if (p_dev_config->pins[i] == AXIS_ANALOG)
 			{
-				for (uint8_t k=0; k<MAX_AXIS_NUM; k++)
-				{
-					if (p_dev_config->axis_config[k].source_main == i)
-					{
-						/* ADC1 regular channel configuration */
-						ADC_RegularChannelConfig(ADC1, channel_config[i].channel, tmp_rank++, ADC_SampleTime_239Cycles5);
-						break;
-					}
-				}
+				/* ADC1 regular channel configuration */
+				ADC_RegularChannelConfig(ADC1, channel_config[i].channel, tmp_rank++, ADC_SampleTime_239Cycles5);
 			}
 		}
 
@@ -726,18 +738,16 @@ void AxesInit (dev_config_t * p_dev_config)
 		uint32_t sqr3 = 0;
 		uint32_t smpr2 = 0;
 		uint8_t  f411_rank = 1;	/* outer F103 path also has a `rank` */
+		/* Every AXIS_ANALOG pin (sourced or not), pin-index order so ranks
+		 * match analog_rank_pin[] above -- auto-detect samples unmapped
+		 * pots too. */
 		for (uint8_t i = 0; i < MAX_AXIS_NUM; ++i) {
 			if (p_dev_config->pins[i] == AXIS_ANALOG) {
-				for (uint8_t k = 0; k < MAX_AXIS_NUM; ++k) {
-					if (p_dev_config->axis_config[k].source_main == i) {
-						uint8_t ch = channel_config[i].channel;
-						if      (f411_rank <= 6)  sqr3 |= ((uint32_t)ch & 0x1F) << ((f411_rank - 1) * 5);
-						else if (f411_rank <= 12) sqr2 |= ((uint32_t)ch & 0x1F) << ((f411_rank - 7) * 5);
-						if (ch < 10) smpr2 |= (7U << (ch * 3));
-						f411_rank++;
-						break;
-					}
-				}
+				uint8_t ch = channel_config[i].channel;
+				if      (f411_rank <= 6)  sqr3 |= ((uint32_t)ch & 0x1F) << ((f411_rank - 1) * 5);
+				else if (f411_rank <= 12) sqr2 |= ((uint32_t)ch & 0x1F) << ((f411_rank - 7) * 5);
+				if (ch < 10) smpr2 |= (7U << (ch * 3));
+				f411_rank++;
 			}
 		}
 		ADC1->SQR1  = sqr1;
@@ -1445,6 +1455,30 @@ void AnalogGet (analog_data_t * out_data, analog_data_t * scaled_data, analog_da
 	if (out_data != NULL)
 	{
 		memcpy(out_data, out_axis_data, sizeof(out_axis_data));
+	}
+}
+
+/**
+  * @brief  Fill the axis auto-detect buffer: raw value of every sampled
+  *         AXIS_ANALOG pin, indexed by PIN index (0..7), on the
+  *         AXIS_MIN..MAX scale (matching raw_axis_data). Pins not sampled
+  *         read AXIS_MIN_VALUE. Lets the configurator detect a rotated pot
+  *         even when it isn't bound to a logical axis. See
+  *         AXIS_DETECT_PLAN.md.
+  * @param  detect_data: MAX_AXIS_NUM-entry output buffer (pin-indexed)
+  * @retval None
+  */
+void AnalogGetDetect (analog_data_t * detect_data)
+{
+	if (detect_data == NULL) return;
+	for (uint8_t i = 0; i < MAX_AXIS_NUM; i++)
+	{
+		detect_data[i] = AXIS_MIN_VALUE;
+	}
+	for (uint8_t r = 0; r < analog_rank_cnt; r++)
+	{
+		detect_data[analog_rank_pin[r]] =
+			map2(adc_data[r], 0, 4095, AXIS_MIN_VALUE, AXIS_MAX_VALUE);
 	}
 }
 
