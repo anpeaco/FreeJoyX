@@ -34,6 +34,7 @@ FreeJoyX supports the following external periphery:
 - 8 analog inputs (12 bit output resolution)
 - axis-to-buttons function (up to 12 buttons per axis)
 - buttons/encoders to axis function
+- **axis auto-detect** (v0.1.3+) — reports a raw value per `AXIS_ANALOG` pin so the configurator can identify a rotated pot before it's mapped to an axis (see [Axes](#axes))
 - 128 digital inputs (buttons, toggle switches, hat povs, encoders, **logic-driven virtual buttons**, **tap**, **double-tap**)
 - 8 shift modifiers (bumped from 5 in v1.7.8)
 - 4 hat povs
