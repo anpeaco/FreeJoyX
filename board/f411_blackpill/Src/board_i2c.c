@@ -10,19 +10,25 @@
   *
   * Pin choice vs F103 (PB10 SCL / PB11 SDA on AF4):
   *   F411 PB11 isn't bonded on UFQFPN48, so I2C2_SDA must move. The
-  *   F411 datasheet routes I2C2_SDA on PB3 (AF9) -- the same pin that
-  *   carries SPI1_SCK on AF5. The configurator's per-pin role
-  *   exclusion picks one role at a time, so users running I2C sensors
-  *   (ADS1115, AS5600) won't run SPI sensors (TLE/MCP/MLX/AS5048A) on
-  *   the same build. Switching to I2C1 on PB6/PB7 was considered but
-  *   that conflicts with Encoder 2 + TLE5011_GEN which is more
-  *   disruptive than the SPI1 conflict.
+  *   F411 datasheet routes I2C2_SDA on either PB3 (AF9, mutex with
+  *   SPI1_SCK) or PB9 (AF9, coexists with SPI1). The configurator
+  *   picks the slot at config time; this driver doesn't care which
+  *   pin holds the role -- pin AF setup is done by periphery.c's
+  *   per-slot loop against dev_config.pins[].
   *
   * Routing summary:
-  *   I2C2_SCL = PB10 (slot 21) AF4
-  *   I2C2_SDA = PB3  (slot 14) AF9      (mutex with SPI1_SCK)
-  *   DMA1 Stream 2 Channel 7 = I2C2_RX  (DMA1_Stream2_IRQn)
-  *   DMA1 Stream 7 Channel 7 = I2C2_TX  (DMA1_Stream7_IRQn)
+  *   I2C2_SCL = PB10 (slot 21) AF4                  (always)
+  *   I2C2_SDA = PB9  (slot 20) AF9                  (default, coexists with SPI1)
+  *      OR    = PB3  (slot 14) AF9                  (mutex with SPI1_SCK)
+  *   DMA1 Stream 2 Channel 7 = I2C2_RX              (DMA1_Stream2_IRQn)
+  *   DMA1 Stream 7 Channel 7 = I2C2_TX              (DMA1_Stream7_IRQn)
+  *
+  * Legacy back-compat: configurator builds before the per-board pin
+  * model wrote I2C_SDA to slot 22 (PB2 on F411), which has no I2C cap.
+  * I2C_Start detects that case and bridges to slot 14 (PB3) so existing
+  * F411 configs keep working until the configurator migrates them
+  * forward to slot 20 (PB9). The bridge goes dormant once any
+  * cap-bearing slot holds I2C_SDA.
   *
   * Clock config: APB1 peripheral clock = HCLK / 2 = 48 MHz on F411
   * with the locked Board_ClockInit_F411 plan (HCLK = 96 MHz). I2C2's
@@ -37,12 +43,22 @@
   ******************************************************************************
   */
 
+#include <stdbool.h>
+
 #include "stm32f4xx.h"
 #include "stm32f4xx_ll_bus.h"
 #include "stm32f4xx_ll_dma.h"
 
 #include "board_pins.h"
 #include "i2c.h"
+#include "periphery.h"
+#include "common_types.h"
+#include "common_defines.h"
+
+/* dev_config is owned by main.c. We read .pins[] here to decide whether
+ * the (legacy F411) "I2C_SDA written to slot 22 / PB2" config needs the
+ * back-compat bridge to slot 14 (PB3) -- see I2C_Start below. */
+extern dev_config_t dev_config;
 
 #define I2C2_DMA_RX_STREAM   LL_DMA_STREAM_2
 #define I2C2_DMA_TX_STREAM   LL_DMA_STREAM_7
@@ -76,12 +92,29 @@ void I2C_Start(void)
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
 	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_I2C2);
 
-	/* PB10 SCL (slot 21) AF4 + PB3 SDA (slot 14) AF9, both open-drain
-	 * AF as I2C requires. */
-	Board_PinSetMode(21, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
-	Board_PinSetAfRole(21, BOARD_AF_ROLE_I2C_SCL);
-	Board_PinSetMode(14, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
-	Board_PinSetAfRole(14, BOARD_AF_ROLE_I2C_SDA);
+	/* SCL + SDA pin AF setup is done by periphery.c's per-slot loop -- it
+	 * walks dev_config.pins[] and calls Board_PinSetMode + Board_PinSetAfRole
+	 * for every slot whose role + cap match (I2C_SCL on slot 21, I2C_SDA on
+	 * either slot 14 / PB3 or slot 20 / PB9, both cap-bearing on F411).
+	 *
+	 * The one case the loop can't cover is the legacy F411 wire layout where
+	 * the configurator wrote I2C_SDA to slot 22 -- on F411 slot 22 = PB2 has
+	 * no I2C_SDA cap, so the loop skips it. Bridge those configs to slot 14
+	 * (PB3, AF9) so I2C keeps working until the configurator migrates the
+	 * config forward to slot 20 (PB9). The bridge fires only when no
+	 * cap-bearing slot already holds I2C_SDA, so once the configurator-side
+	 * migration lands this path goes dormant. */
+	bool sda_handled = false;
+	for (uint8_t i = 0; i < USED_PINS_NUM; ++i) {
+		if (dev_config.pins[i] == I2C_SDA && (pin_config[i].caps & PIN_CAP_I2C_SDA)) {
+			sda_handled = true;
+			break;
+		}
+	}
+	if (!sda_handled) {
+		Board_PinSetMode(14, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
+		Board_PinSetAfRole(14, BOARD_AF_ROLE_I2C_SDA);
+	}
 
 	/* SWRST clears any stuck state from a previous boot. F103 doesn't
 	 * need this because StdPeriph's I2C_Init does it implicitly. */
