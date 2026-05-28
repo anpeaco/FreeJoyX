@@ -49,7 +49,7 @@ pin_config_t pin_config[USED_PINS_NUM] =
 	{GPIOB, LL_GPIO_PIN_6,   6,  PIN_CAP_FAST_ENCODER | PIN_CAP_TLE5011_GEN},             // 17 -- TIM4_CH1 (AF2) / TLE5011 GEN
 	{GPIOB, LL_GPIO_PIN_7,   7,  PIN_CAP_FAST_ENCODER},                                   // 18 -- TIM4_CH2 (AF2)
 	{GPIOB, LL_GPIO_PIN_8,   8,  0},                                                      // 19
-	{GPIOB, LL_GPIO_PIN_9,   9,  0},                                                      // 20
+	{GPIOB, LL_GPIO_PIN_9,   9,  PIN_CAP_I2C_SDA},                                        // 20 -- I2C2_SDA (AF9, coexists with SPI1)
 	{GPIOB, LL_GPIO_PIN_10,  10, PIN_CAP_I2C_SCL},                                        // 21 -- I2C2_SCL (AF4)
 	{GPIOB, LL_GPIO_PIN_2,   2,  0},                                                      // 22 -- PB2 (Phase 7 option B remap; PB11 not bonded on F411 UFQFPN48 so the slot-22 wire-format index points at PB2 on this board only -- BluePill keeps slot 22 = PB11. The configurator's BoardId guard plus the firmware's per-board board_id rejection prevent cross-board config writes from corrupting either pin)
 	{GPIOB, LL_GPIO_PIN_12,  12, 0},                                                      // 23
@@ -220,14 +220,19 @@ static const struct {
 	{ 17, BOARD_AF_ROLE_TLE5011_GEN,    LL_GPIO_AF_2 },
 	/* PB7 = TIM4_CH2 (Encoder 2 B) */
 	{ 18, BOARD_AF_ROLE_FAST_ENCODER,   LL_GPIO_AF_2 },
+	/* PB9 = I2C2_SDA on AF9. Coexists with SPI1 (PB3/4/5 on AF5) -- this
+	 * is the preferred default routing on F411, freeing PB3 for SPI1_SCK.
+	 * The legacy slot-14 (PB3) routing above stays a legal alternative;
+	 * which one the firmware uses is driven by whichever slot the
+	 * configurator marks with role I2C_SDA in dev_config.pins[]. */
+	{ 20, BOARD_AF_ROLE_I2C_SDA,        LL_GPIO_AF_9 },
 	/* PB10 = I2C2_SCL on AF4 */
 	{ 21, BOARD_AF_ROLE_I2C_SCL,        LL_GPIO_AF_4 },
-	/* I2C2_SDA on UFQFPN48: PB11 isn't bonded; the configurator enforces
-	 * pairing with the alternate I2C SDA pin. Slot 22 (PB2) cannot carry
-	 * I2C2_SDA -- if the build needs I2C, the SDA cap must move to a pin
-	 * that's actually bonded for I2C on F411 (PB3 AF9 if SPI1 isn't in
-	 * use, otherwise the user has to free up PB7 = I2C1_SDA AF4 and
-	 * route I2C1 instead of I2C2). Deferred to hardware-day verification. */
+	/* Slot 22 (PB2 on F411 UFQFPN48) cannot carry I2C2_SDA -- if a legacy
+	 * F411 config still has SDA written to slot 22 (the F103-shaped layout
+	 * the configurator used to write), board_i2c.c falls back to slot 14
+	 * (PB3 / mutex with SPI1_SCK) so I2C keeps working until the configurator
+	 * migrates the config forward to slot 20 (PB9). */
 };
 
 void Board_PinSetAfRole(uint8_t pin_idx, board_af_role_t role)

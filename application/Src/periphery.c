@@ -310,10 +310,12 @@ void IO_Init (dev_config_t * p_dev_config)
 			I2C_Start();
 
 			Board_PinSetMode(i, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
+			Board_PinSetAfRole(i, BOARD_AF_ROLE_I2C_SCL);
 		}
 		else if (p_dev_config->pins[i] == I2C_SDA && (pin_config[i].caps & PIN_CAP_I2C_SDA))
 		{
 			Board_PinSetMode(i, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
+			Board_PinSetAfRole(i, BOARD_AF_ROLE_I2C_SDA);
 		}
 		else if (p_dev_config->pins[i] == TLE5011_CS ||
 						 p_dev_config->pins[i] == TLE5012_CS ||

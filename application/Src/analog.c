@@ -571,7 +571,19 @@ void AxesInit (dev_config_t * p_dev_config)
 		}
 	}
 
-	if (p_dev_config->pins[21] == I2C_SCL && p_dev_config->pins[22] == I2C_SDA)			// PB10 and PB11
+	/* I2C presence = SCL on the (always-bonded) slot 21 + any slot carrying
+	 * I2C_SDA. Board-agnostic: F103 has SDA at slot 22 (PB11), F411 at slot 20
+	 * (PB9, default) or slot 14 (PB3, mutex-with-SPI fallback). The legacy
+	 * F411 wire layout (SDA on slot 22 = PB2 with no cap) still trips this
+	 * check; board_i2c.c bridges it to slot 14 / PB3 so the bus actually runs. */
+	uint8_t i2c_sda_present = 0;
+	for (uint8_t i = 0; i < USED_PINS_NUM; ++i) {
+		if (p_dev_config->pins[i] == I2C_SDA) {
+			i2c_sda_present = 1;
+			break;
+		}
+	}
+	if (p_dev_config->pins[21] == I2C_SCL && i2c_sda_present)
 	{
 		// look for ADS1115 sensors with different addresses
 		for (uint8_t addr = ADS1115_I2C_ADDR_MIN; addr <= ADS1115_I2C_ADDR_MAX; addr ++)
