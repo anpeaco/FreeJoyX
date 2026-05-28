@@ -23,6 +23,8 @@ FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a w
 
 Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes (with the configurator's cross-board converter to bridge the gap). Wire format generation is currently `FIRMWARE_VERSION 0x0020` (released as **v0.1.x**); the prior `0x0010` generation and the upstream `0x17XX` lineage are still readable and forward-migratable by the configurator.
 
+On F411, `I2C2_SDA` defaults to **PB9 (AF9)** so it sits disjoint from SPI1 (PB3/4/5, AF5) — a single build can run I2C and SPI sensors together. PB3 stays a legal alternative SDA routing (mutex with SPI1_SCK); the firmware picks whichever slot the configurator writes the role to. Legacy configs that still place SDA on the F103-shaped slot 22 (PB2 on F411, no I2C cap) keep working via a back-compat bridge in `board_i2c.c` until they're re-saved through the configurator. F103 SDA stays on PB11 / AF4 — unchanged.
+
 ## Getting started
 
 See the upstream [FreeJoy wiki](https://github.com/FreeJoy-Team/FreeJoyWiki) for the original feature set and flashing/configuration walkthrough. The features added by FreeJoyX are documented in the plan files alongside this repo (`F103_FASTENC_PLAN.md`, `F103_LOGIC_PLAN.md`, `F411_PORT_PLAN.md`, `F103_GESTURE_PLAN.md`).
