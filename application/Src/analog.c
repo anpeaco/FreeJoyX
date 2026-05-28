@@ -46,6 +46,13 @@ analog_data_t scaled_axis_data[MAX_AXIS_NUM];
 analog_data_t raw_axis_data[MAX_AXIS_NUM];
 analog_data_t out_axis_data[MAX_AXIS_NUM];
 
+// Pre-inversion reference for the dynamic deadband hold. Must NOT use
+// scaled_axis_data[] (the final post-inversion/shape/trim output): when
+// the axis is inverted the two live in opposite sign frames, so the hold
+// threshold never matches and dynamic deadband silently does nothing on
+// inverted axes (FreeJoy-Team/FreeJoy#255).
+analog_data_t deadband_ref_data[MAX_AXIS_NUM];
+
 
 analog_data_t FILTER_LEVEL_1_COEF[FILTER_BUF_SIZE] = {40, 30, 15, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 analog_data_t FILTER_LEVEL_2_COEF[FILTER_BUF_SIZE] = {30, 20, 10, 10, 10, 6, 6, 4, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1174,11 +1181,12 @@ void AxesProcess (dev_config_t * p_dev_config)
 									 AXIS_MAX_VALUE,
 									 0); 
 		
-			if (iabs(tmp[i] - scaled_axis_data[i]) < 3*3*p_dev_config->axis_config[i].deadband_size &&			// 3*3*deadband_size = 3 sigma
+			if (iabs(tmp[i] - deadband_ref_data[i]) < 3*3*p_dev_config->axis_config[i].deadband_size &&			// 3*3*deadband_size = 3 sigma
 					IsDynamicDeadbandHolding(tmp[i], deadband_buffer[i], p_dev_config->axis_config[i].deadband_size))
 			{
-				tmp[i] = scaled_axis_data[i];			// keep value if deadband confidition is true
-			}	
+				tmp[i] = deadband_ref_data[i];			// keep value if deadband confidition is true
+			}
+			deadband_ref_data[i] = tmp[i];			// capture pre-inversion reference for next frame
 		}
 		
 		// Shaping
