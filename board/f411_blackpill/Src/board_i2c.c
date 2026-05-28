@@ -23,12 +23,14 @@
   *   DMA1 Stream 2 Channel 7 = I2C2_RX              (DMA1_Stream2_IRQn)
   *   DMA1 Stream 7 Channel 7 = I2C2_TX              (DMA1_Stream7_IRQn)
   *
-  * Legacy back-compat: configurator builds before the per-board pin
-  * model wrote I2C_SDA to slot 22 (PB2 on F411), which has no I2C cap.
-  * I2C_Start detects that case and bridges to slot 14 (PB3) so existing
-  * F411 configs keep working until the configurator migrates them
-  * forward to slot 20 (PB9). The bridge goes dormant once any
-  * cap-bearing slot holds I2C_SDA.
+  * No back-compat for the pre-PR-#52 wire layout that placed SDA on slot
+  * 22 (PB2 on F411, no I2C cap). Configurator FreeJoyXConfiguratorQt#48
+  * strips the bad SDA pick from the F411 B2 dropdown, migrates existing
+  * stored configs to clear slot 22 on read, and the bus quick-setup
+  * toggle writes SDA to PB9 by default. A user who flashes this firmware
+  * with a config that still has SDA on slot 22 will see I2C stop working
+  * until they update the configurator and re-save -- explicit failure
+  * rather than the old silent re-route to PB3.
   *
   * Clock config: APB1 peripheral clock = HCLK / 2 = 48 MHz on F411
   * with the locked Board_ClockInit_F411 plan (HCLK = 96 MHz). I2C2's
@@ -43,22 +45,12 @@
   ******************************************************************************
   */
 
-#include <stdbool.h>
-
 #include "stm32f4xx.h"
 #include "stm32f4xx_ll_bus.h"
 #include "stm32f4xx_ll_dma.h"
 
 #include "board_pins.h"
 #include "i2c.h"
-#include "periphery.h"
-#include "common_types.h"
-#include "common_defines.h"
-
-/* dev_config is owned by main.c. We read .pins[] here to decide whether
- * the (legacy F411) "I2C_SDA written to slot 22 / PB2" config needs the
- * back-compat bridge to slot 14 (PB3) -- see I2C_Start below. */
-extern dev_config_t dev_config;
 
 #define I2C2_DMA_RX_STREAM   LL_DMA_STREAM_2
 #define I2C2_DMA_TX_STREAM   LL_DMA_STREAM_7
@@ -97,24 +89,14 @@ void I2C_Start(void)
 	 * for every slot whose role + cap match (I2C_SCL on slot 21, I2C_SDA on
 	 * either slot 14 / PB3 or slot 20 / PB9, both cap-bearing on F411).
 	 *
-	 * The one case the loop can't cover is the legacy F411 wire layout where
-	 * the configurator wrote I2C_SDA to slot 22 -- on F411 slot 22 = PB2 has
-	 * no I2C_SDA cap, so the loop skips it. Bridge those configs to slot 14
-	 * (PB3, AF9) so I2C keeps working until the configurator migrates the
-	 * config forward to slot 20 (PB9). The bridge fires only when no
-	 * cap-bearing slot already holds I2C_SDA, so once the configurator-side
-	 * migration lands this path goes dormant. */
-	bool sda_handled = false;
-	for (uint8_t i = 0; i < USED_PINS_NUM; ++i) {
-		if (dev_config.pins[i] == I2C_SDA && (pin_config[i].caps & PIN_CAP_I2C_SDA)) {
-			sda_handled = true;
-			break;
-		}
-	}
-	if (!sda_handled) {
-		Board_PinSetMode(14, BOARD_GPIO_AF_OPENDRAIN, BOARD_GPIO_SPEED_50MHZ);
-		Board_PinSetAfRole(14, BOARD_AF_ROLE_I2C_SDA);
-	}
+	 * If the configurator wrote I2C_SDA to a slot with no I2C cap (e.g. the
+	 * legacy F411 wire layout that placed SDA on slot 22 / PB2), the loop
+	 * silently skips it -- I2C2 stays initialised here but with no SDA pin
+	 * wired, so transactions just don't complete. That's the explicit-failure
+	 * UX we want: open the configurator, the per-board dropdown filter has
+	 * stripped the bad SDA pick, the read-time migration has cleared the
+	 * orphaned role, re-toggle the I2C bus to wire SDA on PB9 (default) or
+	 * PB3 (alt). */
 
 	/* SWRST clears any stuck state from a previous boot. F103 doesn't
 	 * need this because StdPeriph's I2C_Init does it implicitly. */
