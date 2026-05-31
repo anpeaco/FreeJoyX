@@ -31,6 +31,11 @@
  * code path drives both boards' firmware-update flow. */
 #define BOARD_DFU_MAGIC				0x424Cu
 
+/* System ROM-bootloader DFU magic ('SD') -- distinct from BOARD_DFU_MAGIC so
+ * the bootloader can tell "enter our custom HID DFU" (0x424C) from "hand off
+ * to the STM32 factory USB DFU at 0x1FFF0000" (this). F411 only. */
+#define BOARD_SYSTEM_DFU_MAGIC		0x5344u
+
 void Board_RelocateVectorTable(void)
 {
 	WRITE_REG(SCB->VTOR, BOARD_APP_VTOR_ADDR);
@@ -49,6 +54,25 @@ void Board_EnterDfu(void)
 	SET_BIT(RCC->BDCR, RCC_BDCR_RTCEN);
 
 	WRITE_REG(RTC->BKP0R, (uint32_t)BOARD_DFU_MAGIC);
+
+	LL_PWR_DisableBkUpAccess();
+	LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_PWR);
+
+	NVIC_SystemReset();
+}
+
+void Board_EnterSystemDfu(void)
+{
+	/* Same backup-domain unlock sequence as Board_EnterDfu; only the magic
+	 * differs. On the next boot the bootloader reads RTC->BKP0R and, on this
+	 * value, jumps to the STM32 factory USB DFU bootloader (0x1FFF0000)
+	 * instead of the application -- a jumper-free full reinstall. */
+	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
+	LL_PWR_EnableBkUpAccess();
+
+	SET_BIT(RCC->BDCR, RCC_BDCR_RTCEN);
+
+	WRITE_REG(RTC->BKP0R, (uint32_t)BOARD_SYSTEM_DFU_MAGIC);
 
 	LL_PWR_DisableBkUpAccess();
 	LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_PWR);

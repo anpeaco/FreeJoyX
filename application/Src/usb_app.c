@@ -124,6 +124,7 @@ volatile int      status              = 0;
 extern dev_config_t dev_config;
 
 extern volatile uint8_t bootloader;
+extern volatile uint8_t system_dfu;
 extern external_led_data_t external_led_data;
 
 /* HID OUT report dispatch. Called once per OUT report from either:
@@ -314,9 +315,13 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 			break;
 
 		case REPORT_ID_FIRMWARE: {
-			const char tmp_str[] = "bootloader run";
-			if (strcmp(tmp_str, (const char *)&hid_buf[1]) == 0) {
+			/* "bootloader run" -> custom HID DFU (both boards).
+			 * "system dfu"     -> STM32 factory USB DFU, jumper-free
+			 *                     reinstall (F411; no-op on F103). */
+			if (strcmp("bootloader run", (const char *)&hid_buf[1]) == 0) {
 				bootloader = 1;
+			} else if (strcmp("system dfu", (const char *)&hid_buf[1]) == 0) {
+				system_dfu = 1;
 			}
 			break;
 		}

@@ -50,6 +50,7 @@
 /* Private variables ---------------------------------------------------------*/
 dev_config_t dev_config;
 volatile uint8_t bootloader = 0;
+volatile uint8_t system_dfu = 0;
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -129,6 +130,18 @@ int main(void)
 			Board_USB_DeInit();
 			Delay_ms(500);
 			Board_EnterDfu();
+		}
+
+		// Enter system (ROM) DFU command received -- jumper-free reinstall
+		// over the STM32 factory USB DFU bootloader (F411 only; no-op on
+		// F103). Same graceful-teardown sequence as the flasher command.
+		if (system_dfu > 0)
+		{
+			Board_TickStop();
+			Delay_ms(50);	// time to let HID end last transmission
+			Board_USB_DeInit();
+			Delay_ms(500);
+			Board_EnterSystemDfu();
 		}
   }
 }

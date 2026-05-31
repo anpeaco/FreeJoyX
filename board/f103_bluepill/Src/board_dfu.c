@@ -49,3 +49,12 @@ void Board_EnterDfu(void)
 
 	NVIC_SystemReset();
 }
+
+void Board_EnterSystemDfu(void)
+{
+	/* F103's factory system bootloader is USART-only -- there is no USB DFU
+	 * to hand off to, so the jumper-free system-DFU path (anpeaco/FreeJoyX#55)
+	 * is F411-only. This stub exists so the shared application links; the
+	 * configurator never sends the command to an F103, and if it somehow
+	 * arrives the caller's main loop simply continues. */
+}
