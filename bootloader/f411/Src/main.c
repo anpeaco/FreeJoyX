@@ -50,6 +50,15 @@ extern void Board_ClockInit_F411(void);
 /* DFU magic word. Matches Board_EnterDfu in board_dfu.c. */
 #define BOOT_DFU_MAGIC     0x424CU
 
+/* System (ROM) DFU magic. Matches Board_EnterSystemDfu in board_dfu.c. On
+ * this value the bootloader hands off to the STM32 factory USB bootloader at
+ * SYSTEM_MEMORY_BASE instead of staying in the custom HID DFU or jumping to
+ * the app -- a jumper-free full reinstall (anpeaco/FreeJoyX#55). */
+#define BOOT_SYSTEM_DFU_MAGIC  0x5344U
+
+/* STM32F411 system memory (factory ROM bootloader) base address. */
+#define SYSTEM_MEMORY_BASE 0x1FFF0000U
+
 /* F411CE has 128 KB SRAM at 0x20000000-0x2001FFFF. _estack from the
  * linker is one byte past the end (0x20020000) by Cortex-M convention,
  * so the validity check must accept SRAM_BASE..SRAM_BASE+SRAM_SIZE
@@ -66,6 +75,7 @@ USBD_HandleTypeDef hUsbDeviceFS;
 static uint16_t Boot_GetMagicWord(void);
 static int Boot_AppValid(void);
 static void Boot_EnterApp(void) __attribute__((noreturn));
+static void Boot_EnterSystemBootloader(void) __attribute__((noreturn));
 
 int main(void)
 {
@@ -73,6 +83,14 @@ int main(void)
 	Board_ClockInit_F411();
 
 	uint16_t magic    = Boot_GetMagicWord();
+
+	/* System-DFU request: hand off to the STM32 factory USB bootloader for a
+	 * jumper-free reinstall. Checked before the app-jump logic so it wins
+	 * over a present, valid application. */
+	if (magic == BOOT_SYSTEM_DFU_MAGIC) {
+		Boot_EnterSystemBootloader();
+	}
+
 	int      app_ok   = Boot_AppValid();
 
 	if (magic != BOOT_DFU_MAGIC && app_ok) {
@@ -146,6 +164,34 @@ static void Boot_EnterApp(void)
 
 	__ASM volatile ("MSR msp, %0" : : "r" (app_sp) : );
 	((funct_ptr)app_pc)();
+
+	/* unreachable */
+	while (1) { }
+}
+
+/* Hand off to the STM32 factory system (ROM) bootloader at SYSTEM_MEMORY_BASE
+ * so the host can reinstall bootloader + app over USB DFU without a BOOT0
+ * jumper (anpeaco/FreeJoyX#55). Runs before USB is brought up. Returns the
+ * chip to its reset clock/peripheral state first, since the ROM bootloader
+ * expects HSI / no PLL. */
+static void Boot_EnterSystemBootloader(void)
+{
+	uint32_t sys_sp = *(volatile uint32_t *)SYSTEM_MEMORY_BASE;
+	uint32_t sys_pc = *(volatile uint32_t *)(SYSTEM_MEMORY_BASE + 4);
+
+	HAL_RCC_DeInit();
+	HAL_DeInit();
+
+	/* Stop SysTick (HAL_Init started it) so no stray exception fires once
+	 * control passes to the ROM bootloader. */
+	SysTick->CTRL = 0;
+	SysTick->LOAD = 0;
+	SysTick->VAL  = 0;
+
+	WRITE_REG(SCB->VTOR, SYSTEM_MEMORY_BASE);
+
+	__ASM volatile ("MSR msp, %0" : : "r" (sys_sp) : );
+	((funct_ptr)sys_pc)();
 
 	/* unreachable */
 	while (1) { }

@@ -124,6 +124,7 @@ volatile int      status              = 0;
 extern dev_config_t dev_config;
 
 extern volatile uint8_t bootloader;
+extern volatile uint8_t system_dfu;
 extern external_led_data_t external_led_data;
 
 /* HID OUT report dispatch. Called once per OUT report from either:
@@ -138,6 +139,10 @@ extern external_led_data_t external_led_data;
 void App_HidOutDispatch(const uint8_t *hid_buf)
 {
 	static dev_config_t tmp_dev_config;
+	/* 16-bit byte-sum of the config snapshot served in the current config-in
+	 * transfer (set when fragment 1 is served, returned on a fragment
+	 * cfg_count+1 request). Lets the host validate a read in one pass. */
+	static uint16_t snapshot_checksum = 0;
 	/* tmp_buf MUST be static (was stack-local). F411's OTG-FS in
 	 * non-DMA mode latches the buffer pointer in HAL_PCD_EP_Transmit
 	 * and reads from it later, when the TXFE IRQ fires to load the
@@ -182,7 +187,34 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 			config_in_cnt = hid_buf[1];	/* requested config packet number */
 
 			if ((config_in_cnt > 0) && (config_in_cnt <= cfg_count)) {
-				DevConfigGet(&tmp_dev_config);
+				/* Snapshot the whole config from flash ONCE, on the first
+				 * fragment of a transfer, and serve every fragment of that
+				 * transfer from this stable copy. The host always starts a
+				 * read at fragment 1, so the snapshot is in place before any
+				 * later fragment is asked for.
+				 *
+				 * Previously DevConfigGet() re-read all of flash on EVERY
+				 * fragment -- 26 full flash reads per transfer, in USB-IRQ
+				 * context, while the device's own report stream contends for
+				 * the same IN endpoint. Under rapid / immediate reads (e.g. a
+				 * configurator that reads the instant it attaches, or fast
+				 * multi-device switching) a single transfer could mix bytes
+				 * from different moments and ship a stale/partial fragment the
+				 * host accepts as valid -- the "loaded the wrong config, re-read
+				 * and it was fine" bug. One atomic snapshot makes the whole
+				 * transfer self-consistent and cuts the in-IRQ flash work 26x. */
+				if (config_in_cnt == 1) {
+					DevConfigGet(&tmp_dev_config);
+					/* Checksum the exact bytes we're about to serve so the host
+					 * can validate its read in a single pass (it fetches this by
+					 * requesting fragment cfg_count+1, below). A plain 16-bit
+					 * byte-sum -- trivial to reproduce host-side and enough to
+					 * catch the partial / stale-fragment corruption. */
+					snapshot_checksum = 0;
+					for (uint32_t i = 0; i < sizeof(tmp_dev_config); ++i) {
+						snapshot_checksum += ((const uint8_t *)&tmp_dev_config)[i];
+					}
+				}
 
 				memset(tmp_buf, 0, sizeof(tmp_buf));
 				tmp_buf[0] = REPORT_ID_CONFIG_IN;
@@ -197,6 +229,24 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 					       (uint8_t *)&tmp_dev_config + 62 * (config_in_cnt - 1),
 					       62);
 				}
+
+#ifdef BOARD_F411_BLACKPILL
+				App_QueueOrSendInReport(REPORT_ID_CONFIG_IN, tmp_buf, 64);
+#else
+				Board_USB_SendReport(REPORT_ID_CONFIG_IN, tmp_buf, 64);
+#endif
+			} else if (config_in_cnt == cfg_count + 1) {
+				/* Checksum request: return the 16-bit byte-sum of the config
+				 * snapshot served this transfer, so the host can confirm its
+				 * read in ONE pass instead of reading twice and comparing.
+				 * snapshot_checksum was set when fragment 1 was served above.
+				 * Older firmware never enters this branch -- the host times out
+				 * waiting and falls back to the read-twice-and-compare path. */
+				memset(tmp_buf, 0, sizeof(tmp_buf));
+				tmp_buf[0] = REPORT_ID_CONFIG_IN;
+				tmp_buf[1] = config_in_cnt;	/* echo cfg_count+1 so the host matches it */
+				tmp_buf[2] = (uint8_t)(snapshot_checksum & 0xFF);
+				tmp_buf[3] = (uint8_t)(snapshot_checksum >> 8);
 
 #ifdef BOARD_F411_BLACKPILL
 				App_QueueOrSendInReport(REPORT_ID_CONFIG_IN, tmp_buf, 64);
@@ -265,9 +315,13 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 			break;
 
 		case REPORT_ID_FIRMWARE: {
-			const char tmp_str[] = "bootloader run";
-			if (strcmp(tmp_str, (const char *)&hid_buf[1]) == 0) {
+			/* "bootloader run" -> custom HID DFU (both boards).
+			 * "system dfu"     -> STM32 factory USB DFU, jumper-free
+			 *                     reinstall (F411; no-op on F103). */
+			if (strcmp("bootloader run", (const char *)&hid_buf[1]) == 0) {
 				bootloader = 1;
+			} else if (strcmp("system dfu", (const char *)&hid_buf[1]) == 0) {
+				system_dfu = 1;
 			}
 			break;
 		}

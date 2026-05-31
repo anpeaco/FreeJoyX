@@ -20,5 +20,9 @@ const freejoy_image_id_t freejoy_image_id
         .board_id    = BOARD_ID,
         .fw_version  = FIRMWARE_VERSION,
         .build_id    = FIRMWARE_BUILD_ID,
-        .reserved    = { 0, 0, 0, 0 },
+        .version_major = FREEJOYX_VERSION_MAJOR,
+        .version_minor = FREEJOYX_VERSION_MINOR,
+        .version_patch = FREEJOYX_VERSION_PATCH,
+        .version_pad   = 0,
+        .reserved      = { 0, 0, 0 },
     };

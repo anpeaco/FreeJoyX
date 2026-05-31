@@ -31,7 +31,18 @@ typedef struct __attribute__((packed)) freejoy_image_id_t {
     uint16_t board_id;     /* BOARD_ID_F103_BLUEPILL / BOARD_ID_F411_BLACKPILL */
     uint16_t fw_version;   /* mirrors FIRMWARE_VERSION (wire-format compat key) */
     uint16_t build_id;     /* mirrors FIRMWARE_BUILD_ID (8-bit counter widened) */
-    uint32_t reserved[4];  /* zero-filled; reserved for future fields */
+    /* Human semver (FREEJOYX_VERSION major.minor.patch). Added so the flasher
+     * can show "0.1.3" for the selected binary instead of the wire-format token
+     * fw_version ("0x0020"). Reclaimed from reserved[0] -- struct_size is
+     * UNCHANGED (28), so older parsers that ignore the reserved tail keep
+     * working and newer ones read the semver here. All-zero on pre-semver
+     * binaries, which the configurator treats as "not present" and falls back
+     * to fw_version. */
+    uint8_t  version_major;
+    uint8_t  version_minor;
+    uint8_t  version_patch;
+    uint8_t  version_pad;  /* keep 4-byte alignment of the trailing reserved[] */
+    uint32_t reserved[3];  /* zero-filled; reserved for future fields */
 } freejoy_image_id_t;
 
 extern const freejoy_image_id_t freejoy_image_id;

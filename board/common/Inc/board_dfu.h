@@ -27,4 +27,11 @@
 void Board_RelocateVectorTable(void);
 void Board_EnterDfu(void);
 
+/* Hand off to the chip's factory system (ROM) USB DFU bootloader for a
+ * jumper-free full reinstall (anpeaco/FreeJoyX#55). The F411 writes a magic
+ * distinct from Board_EnterDfu's and resets; the FreeJoy bootloader then
+ * jumps to 0x1FFF0000 instead of the app. The F103 ROM bootloader is
+ * USART-only (no USB DFU), so its implementation is a no-op. */
+void Board_EnterSystemDfu(void);
+
 #endif /* BOARD_DFU_H_ */
