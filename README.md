@@ -125,6 +125,18 @@ When the configurator writes a config to the device, the firmware validates the 
 
 Older firmware that predates the split (anpeaco/FreeJoyX#27) sends `0xFE` for both cases. Newer configurators handle both byte codes; older configurators silently ignore `0xFD`. See `application/Src/usb_app.c` "Last packet received. Check version + board_id" for the firmware-side logic.
 
+## Release notes
+
+Full history on the [Releases](https://github.com/anpeaco/FreeJoyX/releases) page. No wire-format change since v0.1.2 — `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board.
+
+### v0.1.4
+- **F411: jumper-free reboot into system DFU** (anpeaco/FreeJoyX#55) — the configurator can drop the board into ROM USB DFU without a BOOT0 jumper.
+- **F411: `I2C2_SDA` routed to PB9 (AF9)** so SPI and I2C coexist on one build (the old PB3-shared mutex is gone).
+- **Config-read: atomic snapshot + per-read checksum** for more robust reads.
+- **Image footer embeds the firmware semver** so the configurator reads board + version straight from the `.bin`.
+- Fix: dynamic deadband on inverted axes (anpeaco/FreeJoyX#47).
+- Folds in the never-tagged **v0.1.3**: axis auto-detect reports a raw value per `AXIS_ANALOG` pin so the configurator can find a pot before it's mapped.
+
 ## Continuous integration
 
 Three GitHub Actions workflows run on every push:
@@ -138,8 +150,8 @@ Tagging the same `vX.Y.Z` here and on the [configurator repo](https://github.com
 To cut a release locally:
 
 ```bash
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.4
+git push origin v0.1.4
 # Release workflow builds + publishes the binaries automatically.
 ```
 
