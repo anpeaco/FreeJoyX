@@ -129,6 +129,9 @@ Older firmware that predates the split (anpeaco/FreeJoyX#27) sends `0xFE` for bo
 
 Full history on the [Releases](https://github.com/anpeaco/FreeJoyX/releases) page. No wire-format change since v0.1.2 — `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board.
 
+### v0.1.5
+- **Version-sync release** — no functional firmware change. `FREEJOYX_VERSION` bumped 0.1.4 → 0.1.5 in lockstep with the configurator's v0.1.5 (USB-DFU install diagnostics + bundled flasher/firmware). `FIRMWARE_VERSION` stays `0x0020`, so this does **not** factory-reset the board.
+
 ### v0.1.4
 - **F411: jumper-free reboot into system DFU** (anpeaco/FreeJoyX#55) — the configurator can drop the board into ROM USB DFU without a BOOT0 jumper.
 - **F411: `I2C2_SDA` routed to PB9 (AF9)** so SPI and I2C coexist on one build (the old PB3-shared mutex is gone).
