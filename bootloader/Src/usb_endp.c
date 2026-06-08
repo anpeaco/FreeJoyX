@@ -75,6 +75,10 @@ volatile bool flash_finished = 0;
 void EP1_OUT_Callback(void)
 {
 	static  uint16_t firmware_len = 0;
+	/* Set once any firmware data has been programmed since the last erase; used
+	 * to decide whether a (duplicate) start header must re-erase or can just
+	 * re-ack packet 1. See the cnt==0 handler below. */
+	static  uint8_t  firmware_data_written = 0;
 
 	uint8_t hid_buf[64];
 	uint8_t repotId;
@@ -101,18 +105,32 @@ void EP1_OUT_Callback(void)
 				
 				if (firmware_len <= 0xE000)	// check new firmware size, 56kB max
 				{
-					flash_started = 1;
-					
-					FLASH_Unlock();
-					for (uint8_t i=0; i<MAX_PAGE-FIRMWARE_START_PAGE; i++)
+					/* Erase only when needed: the very first start header, or a
+					 * genuine restart after some data was already programmed. A
+					 * duplicate start header that arrives while the region is
+					 * still freshly erased with nothing written (host re-sent a
+					 * lost header, or a packet-request ack was missed) just
+					 * re-acks packet 1 -- no redundant multi-second erase, and no
+					 * risk of wiping an in-flight image. Re-erasing on every
+					 * duplicate header was the long-standing hazard. */
+					uint8_t erase_ok = 1;
+					if (!flash_started || firmware_data_written)
 					{
-						if (FLASH_ErasePage(FIRMWARE_COPY_ADDR +i*FLASH_PAGE_SIZE) != FLASH_COMPLETE)
+						FLASH_Unlock();
+						for (uint8_t i=0; i<MAX_PAGE-FIRMWARE_START_PAGE; i++)
 						{
-							firmware_in_cnt = 0xF003;	// flash erase error
-						}							
+							if (FLASH_ErasePage(FIRMWARE_COPY_ADDR +i*FLASH_PAGE_SIZE) != FLASH_COMPLETE)
+							{
+								erase_ok = 0;	// flash erase error
+							}
+						}
+						FLASH_Lock();
+						firmware_data_written = 0;
 					}
-					FLASH_Lock();
-					firmware_in_cnt = cnt+1;
+					flash_started = 1;
+					/* Report an erase failure instead of masking it with cnt+1
+					 * (the old code overwrote 0xF003 unconditionally). */
+					firmware_in_cnt = erase_ok ? (cnt+1) : 0xF003;
 				}
 				else // firmware size error
 				{
@@ -128,6 +146,7 @@ void EP1_OUT_Callback(void)
 					FLASH_ProgramHalfWord(FIRMWARE_COPY_ADDR + (cnt-1)*60 + i, tmp16);
 				}
 				FLASH_Lock();
+				firmware_data_written = 1;
 				firmware_in_cnt = cnt+1;
 			}
 			else if (flash_started && firmware_len > 0)		// last packet
@@ -139,8 +158,9 @@ void EP1_OUT_Callback(void)
 					FLASH_ProgramHalfWord(FIRMWARE_COPY_ADDR + (cnt-1)*60 + i, tmp16);
 				}
 				FLASH_Lock();
-				
-				// check CRC16				
+				firmware_data_written = 1;
+
+				// check CRC16
 				crc_comp = Crc16((uint8_t*)FIRMWARE_COPY_ADDR, firmware_len);				
 				if (crc_in == crc_comp && crc_comp != 0)
 				{
