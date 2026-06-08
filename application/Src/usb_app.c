@@ -356,11 +356,14 @@ void Board_TickISR(void)
 	AppConfigGet(&tmp_app_config);
 
 #ifdef BOARD_F411_BLACKPILL
-	/* Drain a deferred CONFIG_IN/OUT response from App_HidOutDispatch
-	 * before considering joy/params -- the OUT IRQ couldn't send
-	 * directly because EP1 IN was busy with a previous joy report.
-	 * One response per tick; skip the rest of this tick on success
-	 * so we don't immediately re-busy the EP. */
+	/* Drain a deferred config-response fragment queued by App_HidOutDispatch
+	 * when EP2 IN was busy at OUT-IRQ time (F411's OTG-FS Transmit is async, so
+	 * SendCfgReport can return BUSY mid-transfer -- unlike F103's synchronous PMA
+	 * write, hence the queue). One fragment per tick. No early return: joystick
+	 * (EP1) and configurator (EP2) are independent endpoints since the Phase-4F
+	 * split, so draining a fragment on EP2 doesn't contend with the joy send on
+	 * EP1 -- suppressing joy/params for the whole transfer was a single-EP-era
+	 * leftover that needlessly stalled the joystick during config reads/writes. */
 	if (pending_in_active) {
 		if (Board_USB_SendReport(0, pending_in_buf, pending_in_len) == 0) {
 			pending_in_active = 0;
@@ -368,10 +371,12 @@ void Board_TickISR(void)
 		} else {
 			diag_drain_busy++;
 		}
-		return;
 	}
 
-	/* Diagnostic: PC13 mirrors the relevant counters.
+#ifdef FREEJOY_F411_USB_DIAG
+	/* Bring-up diagnostic, OFF by default (build with -DFREEJOY_F411_USB_DIAG).
+	 * Kept out of production because PC13 is a user-assignable pin (slot 27) and
+	 * this rewrites its MODER/ODR every tick, fighting any user mapping. PC13:
 	 *   Solid ON  -> some OUT report received since boot (diag_out_count > 0)
 	 *   Blinking  -> pending_in_active currently set (queue not draining)
 	 *   ~1 Hz heartbeat otherwise -- proves TIM2 ISR running. */
@@ -397,6 +402,7 @@ void Board_TickISR(void)
 			}
 		}
 	}
+#endif /* FREEJOY_F411_USB_DIAG */
 #endif
 
 	/* Joystick + params transmit on the configurator-defined cadence. */
