@@ -129,9 +129,14 @@ void Delay_ms(uint32_t nTime)
   * @brief Delay implementation
   * @retval None
   */
-void Delay_us(uint32_t nTime) 
+void Delay_us(uint32_t nTime)
 {
-    int32_t us = nTime * 5;
+    /* Busy-loop calibrated to ~5 iterations/us on F103's 72 MHz core. Scale by
+     * the actual core clock so F411 (96 MHz) doesn't run ~25% short -- the
+     * shortfall corrupts the bit-banged / timing-sensitive sensor protocols
+     * (TLE5011, TLE5012, MLX90393). On F103 (SystemCoreClock 72 MHz) this is
+     * exactly nTime*5 as before. */
+    int32_t us = (int32_t)(nTime * 5U * (SystemCoreClock / 1000000U) / 72U);
 
     while (us > 0) {
         us--;
