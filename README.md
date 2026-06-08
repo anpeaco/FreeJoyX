@@ -25,6 +25,20 @@ Both targets share the same `dev_config_t` wire format; the configurator dispatc
 
 On F411, `I2C2_SDA` defaults to **PB9 (AF9)** so it sits disjoint from SPI1 (PB3/4/5, AF5) — a single build can run I2C and SPI sensors together. PB3 stays a legal alternative SDA routing (mutex with SPI1_SCK); the firmware picks whichever slot the configurator writes the role to. The pre-PR-#52 wire layout that placed SDA on slot 22 (PB2 on F411, no I2C cap) is not supported — flashing this firmware with such a config silently fails to bring up I2C; update the configurator and re-save the config to wire SDA on PB9. F103 SDA stays on PB11 / AF4 — unchanged.
 
+## Hardware verification status
+
+Both targets build clean in CI, but on-hardware testing is ongoing and differs
+per board. As of **v0.1.10**:
+
+| Board | Verified on real hardware | Not yet hardware-verified |
+|---|---|---|
+| **F103 BluePill** | Running on the maintainer's test rig: **shift registers**, **direct axes** (analog inputs read by the MCU's own ADC), and **logic buttons** all confirmed working. Flashing over the HID bootloader is routine. | — (the day-to-day reference build) |
+| **F411 BlackPill** | Enumeration, configurator connect, and flashing (HID upgrade **and** USB DFU install) work end-to-end. **Buttons** confirmed reporting correctly in Windows game-controller testers — this is the fix in v0.1.10 (see Release notes). | **Buttons only so far.** Analog axes, sensors (SPI/I2C), encoders, LEDs and shift registers are not yet exercised on physical F411 hardware. |
+
+Subsystems marked "not yet verified" on F411 are *expected* to work — the wire
+format and most application code are shared with the tested F103 path — but they
+haven't been run on a physical F411 yet, so treat them as unproven until they are.
+
 ## Getting started
 
 See the upstream [FreeJoy wiki](https://github.com/FreeJoy-Team/FreeJoyWiki) for the original feature set and flashing/configuration walkthrough. The features added by FreeJoyX are documented in the plan files alongside this repo (`F103_FASTENC_PLAN.md`, `F103_LOGIC_PLAN.md`, `F411_PORT_PLAN.md`, `F103_GESTURE_PLAN.md`).
