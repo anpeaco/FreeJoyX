@@ -129,6 +129,10 @@ Older firmware that predates the split (anpeaco/FreeJoyX#27) sends `0xFE` for bo
 
 Full history on the [Releases](https://github.com/anpeaco/FreeJoyX/releases) page. No wire-format change since v0.1.2 — `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board.
 
+### v0.1.10
+- **F411: joystick reports no longer freeze in Windows game-controller testers** — the joystick HID report now builds into its own TX buffer instead of sharing one with the params report. On F411 the OTG-FS FIFO load is deferred to the TXFE IRQ that runs after the tick, so the shared buffer was being overwritten with params bytes before the joystick load ran — putting `REPORT_ID_PARAM` data on the joystick pipe, which Windows discarded (axes/buttons showed frozen in joy.cpl/VPC while a configurator session was open). F103 was immune (synchronous PMA write). Also folds in the earlier F411 bring-up fixes on this branch (config VID/PID applied to the device descriptor, `Delay_us` core-clock scaling, bootloader duplicate-start guard).
+- **Version-sync** — `FREEJOYX_VERSION` 0.1.9 → 0.1.10 in lockstep with the configurator's v0.1.10. No wire-format change; `FIRMWARE_VERSION` stays `0x0020`, so this does **not** factory-reset the board.
+
 ### v0.1.5
 - **Version-sync release** — no functional firmware change. `FREEJOYX_VERSION` bumped 0.1.4 → 0.1.5 in lockstep with the configurator's v0.1.5 (USB-DFU install diagnostics + bundled flasher/firmware). `FIRMWARE_VERSION` stays `0x0020`, so this does **not** factory-reset the board.
 
