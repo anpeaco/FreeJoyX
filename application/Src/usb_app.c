@@ -347,6 +347,16 @@ void Board_TickISR(void)
 	 * in App_HidOutDispatch. Tick is single-instance (no reentrancy
 	 * for same-priority IRQ) so static is safe here. */
 	static uint8_t report_buf[64];
+	/* The joystick report needs its OWN buffer, separate from report_buf.
+	 * On F411 the OTG-FS FIFO load is deferred to the TXFE IRQ that runs
+	 * AFTER this tick returns, so the source buffer must stay byte-stable
+	 * until the EP1 transfer completes. report_buf gets overwritten later
+	 * in this same tick by the params report (EP2) -- with a shared buffer
+	 * the joystick's deferred FIFO load reads params bytes (REPORT_ID 2),
+	 * which Windows' joystick parser discards, freezing axes/buttons while
+	 * a configurator session is active. F103's synchronous PMA write never
+	 * hit this; the dedicated buffer is harmless there and fixes F411. */
+	static uint8_t joy_buf[64];
 	uint8_t       pos = 0;
 	app_config_t  tmp_app_config;
 
@@ -417,20 +427,20 @@ void Board_TickISR(void)
 		AnalogGetDetect(params_report.detect_axis_raw);
 		POVsGet(joy_report.pov_data);
 
-		report_buf[pos++] = REPORT_ID_JOY;
+		joy_buf[pos++] = REPORT_ID_JOY;
 		if (tmp_app_config.buttons_cnt > 0) {
-			memcpy(&report_buf[pos], joy_report.button_data, MAX_BUTTONS_NUM/8);
+			memcpy(&joy_buf[pos], joy_report.button_data, MAX_BUTTONS_NUM/8);
 			pos += (tmp_app_config.buttons_cnt - 1) / 8 + 1;
 		}
 		for (uint8_t i = 0; i < MAX_AXIS_NUM; i++) {
 			if (tmp_app_config.axis & (1 << i)) {
-				report_buf[pos++] = (uint8_t)(joy_report.axis_data[i] & 0xFF);
-				report_buf[pos++] = (uint8_t)(joy_report.axis_data[i] >> 8);
+				joy_buf[pos++] = (uint8_t)(joy_report.axis_data[i] & 0xFF);
+				joy_buf[pos++] = (uint8_t)(joy_report.axis_data[i] >> 8);
 			}
 		}
 		for (uint8_t i = 0; i < MAX_POVS_NUM; i++) {
 			if (tmp_app_config.pov & (1 << i)) {
-				report_buf[pos++] = joy_report.pov_data[i];
+				joy_buf[pos++] = joy_report.pov_data[i];
 			}
 		}
 
@@ -444,7 +454,7 @@ void Board_TickISR(void)
 		 * params no longer share an endpoint, so the F411-specific
 		 * per-tick alternation that pre-Phase-4F shipped is no longer
 		 * needed; both boards run the same path here. */
-		Board_USB_SendReport(REPORT_ID_JOY, report_buf, pos);
+		Board_USB_SendReport(REPORT_ID_JOY, joy_buf, pos);
 
 		/* Params report -- two halves chunked into 62-byte payloads
 		 * because params_report_t is larger than one HID report. Only
