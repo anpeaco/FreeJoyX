@@ -50,6 +50,10 @@ extern uint16_t Crc16(uint8_t *buf, uint16_t num);
  * main-loop exit signal. */
 volatile uint8_t flash_started  = 0;
 volatile uint8_t flash_finished = 0;
+/* Set once any chunk has been programmed since the last erase; lets a duplicate
+ * start header re-ack packet 1 without a redundant full erase (and without
+ * wiping an in-flight image). See the cnt==0 handler. */
+static uint8_t   firmware_data_written = 0;
 static uint16_t  firmware_len = 0;
 static uint16_t  crc_in       = 0;
 
@@ -101,6 +105,7 @@ static int8_t Boot_HID_Init(void)
 	flash_finished = 0;
 	firmware_len   = 0;
 	crc_in         = 0;
+	firmware_data_written = 0;
 	return USBD_OK;
 }
 
@@ -168,12 +173,18 @@ static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
 		crc_in       = ((uint16_t)report_buffer[7] << 8) | (uint16_t)report_buffer[6];
 
 		if (firmware_len <= APP_MAX_BYTES) {
-			flash_started = 1;
-			if (Boot_EraseApp() == 0) {
-				firmware_in_cnt = cnt + 1;
-			} else {
-				firmware_in_cnt = 0xF003;
+			/* Erase only when needed: the first start header, or a genuine
+			 * restart after data was programmed. A duplicate start header on a
+			 * still-clean region (host re-sent a lost header, or a packet-request
+			 * ack was missed) just re-acks packet 1 -- no redundant ~3-5s erase,
+			 * and no wiping of an in-flight image. */
+			int8_t erase_rc = 0;
+			if (!flash_started || firmware_data_written) {
+				erase_rc = Boot_EraseApp();
+				firmware_data_written = 0;
 			}
+			flash_started = 1;
+			firmware_in_cnt = (erase_rc == 0) ? (cnt + 1) : 0xF003;
 		} else {
 			firmware_in_cnt = 0xF001;
 		}
@@ -181,6 +192,7 @@ static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
 		/* Body packet. */
 		uint32_t addr = APP_VTOR_ADDR + (uint32_t)(cnt - 1) * CHUNK_BYTES;
 		if (Boot_WriteChunk(addr, &report_buffer[4]) == 0) {
+			firmware_data_written = 1;
 			firmware_in_cnt = cnt + 1;
 		} else {
 			flash_started   = 0;
@@ -193,6 +205,7 @@ static int8_t Boot_HID_OutEvent(uint8_t *report_buffer)
 			flash_started   = 0;
 			firmware_in_cnt = 0xF004;
 		} else {
+			firmware_data_written = 1;
 			uint16_t crc_comp = Crc16((uint8_t *)APP_VTOR_ADDR, firmware_len);
 			if (crc_in == crc_comp && crc_comp != 0) {
 				flash_started   = 0;

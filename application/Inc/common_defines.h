@@ -25,7 +25,7 @@
  * 1.0.0 when the project is judged stable. See issue anpeaco/FreeJoyX#18. */
 #define FREEJOYX_VERSION_MAJOR              0
 #define FREEJOYX_VERSION_MINOR              1
-#define FREEJOYX_VERSION_PATCH              9
+#define FREEJOYX_VERSION_PATCH              10
 #define FREEJOYX_VER_STR_HELPER(x)          #x
 #define FREEJOYX_VER_STR(x)                 FREEJOYX_VER_STR_HELPER(x)
 #define FREEJOYX_VERSION                    FREEJOYX_VER_STR(FREEJOYX_VERSION_MAJOR) "." \

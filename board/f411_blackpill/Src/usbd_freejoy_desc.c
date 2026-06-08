@@ -118,6 +118,23 @@ static void Get_SerialNumStr(void)
 static uint8_t * USBD_FreeJoy_DeviceDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
 	(void)speed;
+
+#ifndef BOOTLOADER
+	/* Apply the configurator-set VID/PID into idVendor/idProduct (offsets 8..11),
+	 * mirroring F103's Get_VidPid (application/Src/usb_hw.c). Without this F411
+	 * ignored the config's VID/PID and always enumerated as the compiled default,
+	 * so a configurator VID/PID change never took effect. Fall back to the default
+	 * for a blank (0x0000) slot so a fresh / unmigrated / corrupt config can't
+	 * brick enumeration. The bootloader build keeps the fixed VID/PID so the
+	 * flasher is always discoverable. */
+	const uint16_t vid = dev_config.vid ? dev_config.vid : USBD_VID;
+	const uint16_t pid = dev_config.pid ? dev_config.pid : USBD_PID;
+	USBD_DeviceDesc[8]  = LOBYTE(vid);
+	USBD_DeviceDesc[9]  = HIBYTE(vid);
+	USBD_DeviceDesc[10] = LOBYTE(pid);
+	USBD_DeviceDesc[11] = HIBYTE(pid);
+#endif
+
 	*length = sizeof(USBD_DeviceDesc);
 	return USBD_DeviceDesc;
 }
