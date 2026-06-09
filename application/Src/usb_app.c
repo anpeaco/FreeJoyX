@@ -257,10 +257,16 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 			break;
 
 		case REPORT_ID_CONFIG_OUT:
+			/* hid_buf[1] is the host-controlled fragment number (0..255).
+			 * It must be bounded before it scales the write offset into
+			 * tmp_dev_config -- mirror the CONFIG_IN read guard above
+			 * (config_in_cnt <= cfg_count). Without the upper bound a host
+			 * could memcpy 62 attacker-supplied bytes far past the config
+			 * buffer (e.g. fragment 200 -> +62*199 bytes), corrupting .bss. */
 			if (hid_buf[1] == cfg_count && last_cfg_size > 0) {
 				memcpy((uint8_t *)&tmp_dev_config + 62 * (hid_buf[1] - 1),
 				       &hid_buf[2], last_cfg_size);
-			} else if (hid_buf[1] > 0) {
+			} else if (hid_buf[1] > 0 && hid_buf[1] < cfg_count) {
 				memcpy((uint8_t *)&tmp_dev_config + 62 * (hid_buf[1] - 1),
 				       &hid_buf[2], 62);
 			}

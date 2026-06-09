@@ -905,8 +905,8 @@ void AxesProcess (dev_config_t * p_dev_config)
 		uint8_t channel = p_dev_config->axis_config[i].channel;
 		uint8_t address = p_dev_config->axis_config[i].i2c_address;
 		
-		if (source >= 0)		// source SPI sensors or internal ADC
-		{			
+		if (source >= 0 && source < USED_PINS_NUM)		// source SPI sensors or internal ADC
+		{
 			if (p_dev_config->pins[source] == AXIS_ANALOG)					// source analog
 			{	
 				uint8_t k=0;
