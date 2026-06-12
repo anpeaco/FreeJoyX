@@ -112,7 +112,17 @@ int main(void)
 			USBD_Stop(&hUsbDeviceFS);
 			USBD_DeInit(&hUsbDeviceFS);
 			HAL_Delay(500);
-			Boot_EnterApp();
+			/* Full system reset rather than a bare jump into the freshly-written
+			 * app. A jump (Boot_EnterApp) leaves the OTG-FS core in the
+			 * bootloader's state, and on F411 the soft-disconnect above often
+			 * doesn't make the host re-enumerate -- the board sits dark until a
+			 * manual power-cycle. NVIC_SystemReset cycles the OTG core and the
+			 * D+ line, so the host sees a clean disconnect -> reconnect and
+			 * re-enumerates on its own (what the configurator's post-flash
+			 * watcher already expects). On the reset the bootloader re-runs,
+			 * finds the DFU magic cleared and the app now valid, and jumps to it.
+			 * (F103's USB_Shutdown drops D+ properly, so it keeps its bare jump.) */
+			NVIC_SystemReset();
 		}
 	}
 }
