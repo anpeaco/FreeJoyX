@@ -110,12 +110,17 @@ void I2C_Start(void)
 	 * variant -- F103 ships I2C_DutyCycle_16_9 but the difference is
 	 * a few-percent SCL high/low ratio, irrelevant for our sensors).
 	 *
-	 *   T_high = T_low = CCR * Tpclk1
-	 *   T_total = 2 * CCR * Tpclk1 = 1 / 400_000
-	 *   CCR = Tpclk1_freq / (2 * 400_000)
-	 *       = 48_000_000 / 800_000 = 60
+	 * In Fast Mode with DUTY=0 the low period is TWICE the high period
+	 * (NOT equal -- that's Standard Mode), so the SCL period spans
+	 * 3*CCR*Tpclk1, not 2*CCR*Tpclk1:
+	 *   T_high = CCR * Tpclk1,  T_low = 2 * CCR * Tpclk1
+	 *   T_total = 3 * CCR * Tpclk1 = 1 / 400_000
+	 *   CCR = Tpclk1_freq / (3 * 400_000)
+	 *       = 48_000_000 / 1_200_000 = 40
+	 * The old value 60 used the Standard-Mode 2*CCR formula while FS=1,
+	 * so SCL ran at 48 MHz / (3*60) = 266 kHz instead of 400 kHz.
 	 * Set FS=1 (Fast Mode), DUTY=0 (2/1 ratio). */
-	I2C2->CCR = I2C_CCR_FS | 60;
+	I2C2->CCR = I2C_CCR_FS | 40;
 
 	/* TRISE = (max_rise_time_ns / Tpclk1_ns) + 1. Fast Mode spec:
 	 * 300 ns max rise. At 48 MHz Tpclk1 = 20.83 ns -> TRISE = 14 + 1. */

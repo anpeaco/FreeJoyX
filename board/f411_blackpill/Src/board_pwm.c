@@ -34,7 +34,13 @@
 #include "stm32f4xx_ll_gpio.h"
 #include "stm32f4xx_ll_tim.h"
 
-#define PWM_TIMER_TICK_HZ    100000U     /* 100 kHz intermediate counter */
+/* 200 kHz intermediate counter. NB: the Prescaler lines below divide the
+ * ALREADY-DOUBLED 96 MHz APB1 timer clock by this, so it must be 200000 to
+ * land a 200 kHz counter (PERIOD 200 -> 1 kHz). The previous 100000 gave a
+ * 100 kHz counter -> 500 Hz PWM, half the intended rate (same APB1 x2
+ * miscalculation as board_tick.c -- F103's StdPeriph divides un-doubled
+ * PCLK1/100000 and reaches 200 kHz via the timer x2). */
+#define PWM_TIMER_TICK_HZ    200000U     /* 200 kHz intermediate counter */
 #define PWM_TIMER_PERIOD     200U        /* 1 ms cycle -> 1 kHz output */
 
 static void f411_pwm_config_channel(TIM_TypeDef *tim, uint32_t channel, uint16_t pulse)
