@@ -143,6 +143,9 @@ Older firmware that predates the split (anpeaco/FreeJoyX#27) sends `0xFE` for bo
 
 Full history on the [Releases](https://github.com/anpeaco/FreeJoyX/releases) page. No wire-format change since v0.1.2 — `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board.
 
+### v0.1.12
+- **F411: fixed a clock-base miscalculation that ran every timer 2× slow — the source of the reported input lag.** The F411 LL setup divided the *already-doubled* 96 MHz APB1 timer clock where it should divide by 200000 (F103's StdPeriph divides the un-doubled PCLK1 and relies on the APB1 ×2). Three sites: `board_tick.c` (TIM2 ran at 1 kHz not 2 kHz → `GetMillis()` half-rate → button debounce, exchange period, gesture windows all 2× their set durations — e.g. a 50 ms debounce acted like 100 ms); `board_pwm.c` (LED PWM 500 Hz instead of 1 kHz); `board_i2c.c` (Fast-Mode SCL ran at 266 kHz instead of 400 kHz — Standard-Mode duty formula used in Fast Mode). F103 unaffected. No wire-format change; `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board. (FreeJoyX#65)
+
 ### v0.1.11
 - **F411: the board re-enumerates itself after a flash — no manual power-cycle.** The F411 bootloader now does an `NVIC_SystemReset()` once the app is written instead of jumping straight into it. On OTG-FS the old bare jump didn't reliably drop D+, so Windows never saw a disconnect→reconnect and the board sat dark until you replugged; a full reset cycles the OTG core and the D+ line, so the host re-enumerates on its own (~2–3 s, which is what the configurator's post-flash watcher already waits for). On the reset the bootloader finds the DFU magic cleared and the app valid and jumps to it. F103 (whose `USB_Shutdown` drops D+ properly) keeps its bare jump. Bootloader-only change; no wire-format / `FIRMWARE_VERSION` impact — takes effect once the new bootloader is installed via USB DFU.
 
