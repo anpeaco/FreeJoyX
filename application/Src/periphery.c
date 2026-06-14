@@ -70,11 +70,21 @@ volatile uint32_t TimingDelay;
   * @retval None
   */
 void SysTick_Init(void) {
-    /* CMSIS-portable: SystemCoreClock is updated by SystemInit on F103
-     * (system_stm32f10x.c) and by Board_ClockInit_F411's
-     * LL_SetSystemCoreClock(96000000) on F411. Avoids the F1-only
-     * RCC_GetClocksFreq StdPeriph helper and works on both boards. */
+    /* CMSIS-portable: SystemCoreClock is set by SystemInit at reset on F103
+     * (system_stm32f10x.c -> SetSysClock) and by Board_ClockInit() ->
+     * Board_ClockInit_F411's LL_SetSystemCoreClock(96000000) on F411, which
+     * main() now calls before this. Avoids the F1-only RCC_GetClocksFreq
+     * StdPeriph helper and works on both boards. */
     SysTick_Config(SystemCoreClock / 1000);
+
+#ifdef BOARD_F411_BLACKPILL
+    /* Enable the DWT cycle counter used by Delay_us on F411. (F103's legacy
+     * CM3 CMSIS doesn't expose the DWT struct, and its busy-loop Delay_us is
+     * already correctly calibrated, so F103 keeps the busy-loop.) */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+#endif
 }
 
 /**
@@ -131,16 +141,27 @@ void Delay_ms(uint32_t nTime)
   */
 void Delay_us(uint32_t nTime)
 {
-    /* Busy-loop calibrated to ~5 iterations/us on F103's 72 MHz core. Scale by
-     * the actual core clock so F411 (96 MHz) doesn't run ~25% short -- the
-     * shortfall corrupts the bit-banged / timing-sensitive sensor protocols
-     * (TLE5011, TLE5012, MLX90393). On F103 (SystemCoreClock 72 MHz) this is
-     * exactly nTime*5 as before. */
+#ifdef BOARD_F411_BLACKPILL
+    /* DWT cycle-counter delay on F411: exact and immune to flash-wait-state /
+     * ART-cache variation. The old busy-loop's calibration depended on the
+     * core and on whether the flash accelerator was enabled (fragile, and it
+     * skews the bit-banged sensor protocols TLE5011/5012/MLX90393). DWT is
+     * enabled in SysTick_Init. Unsigned subtraction wraps cleanly. */
+    uint32_t start  = DWT->CYCCNT;
+    uint32_t cycles = nTime * (SystemCoreClock / 1000000U);
+
+    while ((DWT->CYCCNT - start) < cycles) {
+    }
+#else
+    /* F103 (Cortex-M3): proven busy-loop, ~5 iterations/us at 72 MHz. The
+     * SystemCoreClock scaling keeps it exact at 72 MHz (nTime*5) and leaves
+     * headroom if the core clock ever changes. */
     int32_t us = (int32_t)(nTime * 5U * (SystemCoreClock / 1000000U) / 72U);
 
     while (us > 0) {
         us--;
     }
+#endif
 }
 
 /**

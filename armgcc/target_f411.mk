@@ -1,13 +1,13 @@
 # target_f411.mk -- STM32F411CEU6 BlackPill V3.x target definitions
 #
-# Phase 2 minimal blinky: builds a tiny standalone PC13 toggler. No
-# application/Src files compile under TARGET=f411 yet -- those carry
-# F1-only headers (stm32f10x_*) and references that won't resolve. As
-# the BSP grows in Phases 3..7, more LL drivers and shared application
-# files will be added to the SRC lists below.
+# Builds the full FreeJoyX application and the DFU bootloader for the F411:
+# the board-agnostic application/Src files plus the F411 BSP (board/
+# f411_blackpill/Src), the vendored STM32 LL drivers, the HAL flash + PCD
+# drivers, and the Cube USB Device library. The SRC lists below are the
+# authoritative set of translation units for each image.
 #
 # Driver layer is STM32 LL (locked decision in CLAUDE.md / F411 plan).
-# HAL is used only for flash (Phase 3) since LL ships no flash driver.
+# HAL is used only for flash and the USB PCD since LL ships neither.
 
 #######################################
 # CPU / FPU
@@ -45,13 +45,9 @@ TARGET_C_INCLUDES = \
 -I../board/f411_blackpill/Inc
 
 #######################################
-# C sources for the APPLICATION build.
-# Phase 2: minimal blinky (main_f411.c + BSP only).
-# Phase 5b: board-agnostic application files added (compile-clean only;
-#   F411 link still fails until Phase 4 USB and Phase 5c SPI/DMA/ADC/UART
-#   land). Sensor drivers (as5048a, as5600, mcp320x, mlx90363, mlx90393,
-#   ads1115) and TLE5011/TLE5012 reach into DMA1_Channel{2,3,5} and
-#   SPI_BiDirectional* StdPeriph calls directly -- they wait for Phase 5c.
+# C sources for the APPLICATION build: the shared application/Src files,
+# the F411 BSP, the LL + HAL(flash/PCD) drivers, and the Cube USB Device
+# library. Entry point is application/Src/main.c (shared with F103).
 #######################################
 TARGET_APP_C_SOURCES = \
 ../application/Src/main.c \
@@ -129,8 +125,9 @@ TARGET_APP_C_SOURCES = \
 # uses only stm32f4xx_hal_flash{,_ex}.c.
 
 #######################################
-# All C sources for the BOOTLOADER build (Phase 2: stub).
-# Phase 6 replaces the stub with a real LL + USBD DFU bootloader.
+# All C sources for the BOOTLOADER build: the LL + USBD DFU bootloader
+# (bootloader/f411/Src) plus the shared F411 USB descriptor/config + clock
+# init and the LL/HAL/USBD drivers it needs.
 #######################################
 TARGET_BOOT_C_SOURCES = \
 ../bootloader/f411/Src/main.c \

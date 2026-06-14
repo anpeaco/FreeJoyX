@@ -16,15 +16,11 @@
   *   IRQs   -> DMA2_Stream0_IRQn (RX complete)
   *           -> DMA2_Stream3_IRQn (TX complete)
   *
-  * The IRQ handlers in stm32f4xx_it.c currently clear DMA flags and
-  * disable the stream; the full sensor-dispatch chain (TLE5011_StopDMA,
-  * MCP320x_StopDMA, etc.) is still in F103's stm32f10x_it.c and will be
-  * hoisted into a shared application/Src/sensor_dispatch.c in a follow-up
-  * Phase 5d commit so both boards call the same dispatch body. Pre-hoist,
-  * F411 sensor reads run a single transfer at a time (no sensor chaining)
-  * because the F411 IRQ doesn't kick off the next sensor in the loop --
-  * that's a degraded-but-functional pre-hardware milestone, not the
-  * shipping behaviour. Will be fixed before BlackPill arrives.
+  * The DMA RX/TX complete IRQs (board/f411_blackpill/Src/board_sensor_irqs.c)
+  * delegate to the shared chain dispatcher in application/Src/sensor_dispatch.c
+  * (Sensor_OnSpiRxComplete / Sensor_OnSpiTxComplete), the same body F103's
+  * stm32f10x_it.c calls. Both boards run identical sensor-chaining logic --
+  * a sensor's completion IRQ kicks off the next sensor in the loop.
   ******************************************************************************
   */
 

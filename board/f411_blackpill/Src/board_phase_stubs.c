@@ -23,16 +23,19 @@
 
 /* simhub.c calls these to push CDC packets over the F103 USB stack.
  * F411 has no CDC class today (Phase 4 ships HID-only); compositing
- * HID+CDC is deferred. SH_ProcessEndpData stays a no-op; CDC_Send_DATA
- * pretends the send completed. */
+ * HID+CDC is deferred (anpeaco/FreeJoyX#5). SH_ProcessEndpData stays a
+ * no-op; CDC_Send_DATA reports the full length as "sent" so callers that
+ * treat a short return as a retryable error (and would spin) don't -- the
+ * data is silently discarded until Phase 4E lands. The configurator greys
+ * out SimHub-over-USB on F411 so the user isn't offered this dead path. */
 void SH_ProcessEndpData(void)
 {
 }
 
 uint32_t CDC_Send_DATA(uint8_t *data, uint8_t len)
 {
-	(void)data; (void)len;
-	return 0;
+	(void)data;
+	return len;
 }
 
 /* Phase 4D extracted EP1_OUT_Callback + out_buffer; the OutEvent path

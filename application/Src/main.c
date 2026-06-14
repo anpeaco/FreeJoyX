@@ -25,6 +25,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
+#include "board_clock.h"
 #include "board_dfu.h"
 #include "periphery.h"
 #include "config.h"
@@ -61,6 +62,13 @@ volatile uint8_t system_dfu = 0;
   */
 int main(void)
 {
+	// Configure the system clock, flash latency/ART and NVIC grouping before
+	// anything timing-related runs. No-op on F103 (CMSIS SystemInit already
+	// did this at reset); on F411 this is what makes the app self-sufficient
+	// instead of inheriting the bootloader's clock and running SysTick/Delay
+	// against a stale 16 MHz SystemCoreClock.
+	Board_ClockInit();
+
 	// Relocate vector table to the application's load address. Wrapped
 	// in the BSP so the F411 port can swap in its own offset (S5-relative
 	// rather than F103's 8-KB-bootloader-relative).

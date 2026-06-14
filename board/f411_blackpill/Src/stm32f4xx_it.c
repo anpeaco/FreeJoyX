@@ -40,6 +40,13 @@ void DebugMon_Handler(void)   { }
 void PendSV_Handler(void)     { }
 void SysTick_Handler(void)
 {
+	/* This handler is dual-purpose on F411 (HAL_IncTick + TimingDelay),
+	 * unlike F103's SysTick which only does the TimingDelay decrement.
+	 * SysTick runs at the lowest exception priority (set by SysTick_Config),
+	 * so it is preempted by the 2 kHz TIM2 tick and OTG_FS; HAL_GetTick can
+	 * therefore lose ticks under sustained IRQ load -- benign for HAL_PCD's
+	 * coarse timeouts post-enumeration. Keep the body trivial. */
+
 	/* HAL_GetTick increments via HAL_IncTick from this handler so HAL_PCD's
 	 * busy-wait timeouts (HAL_Delay etc.) actually advance. */
 	HAL_IncTick();

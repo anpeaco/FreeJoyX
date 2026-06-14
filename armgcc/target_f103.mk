@@ -84,6 +84,7 @@ TARGET_APP_C_SOURCES = \
 ../board/f103_bluepill/Src/board_misc.c \
 ../board/f103_bluepill/Src/board_ws2812b.c \
 ../board/f103_bluepill/Src/board_pwm.c \
+../board/f103_bluepill/Src/board_clock.c \
 ../Drivers/CMSIS/CM3/DeviceSupport/ST/STM32F10x/system_stm32f10x.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/stm32f10x_usart.c \
 ../Drivers/STM32F10x_StdPeriph_Driver/src/misc.c \

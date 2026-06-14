@@ -287,7 +287,15 @@ void ws2812b_Init(uint8_t led_type)
 	gpio.Alternate  = LL_GPIO_AF_1;
 	LL_GPIO_Init(GPIOA, &gpio);
 
-	/* TIM1 base: 96 MHz / (PERIOD ticks) = 800 kHz output rate. No
+	/* TIM1 single-owner rule: TIM1 is shared by Fast Encoder 1 (PA8/PA9,
+	 * board_encoder.c), LED PWM channel TIM1_CH1 (PA8, board_pwm.c) and this
+	 * WS2812B driver (PA10/CH3). Each reconfigures the whole TIM1 time base,
+	 * so at most ONE may be active in a given config -- last initializer wins.
+	 * The configurator must keep these mutually exclusive (same constraint as
+	 * F103). Verify the Enc1 + WS2812B coexistence filter on the configurator
+	 * side before shipping a config that enables both.
+	 *
+	 * TIM1 base: 96 MHz / (PERIOD ticks) = 800 kHz output rate. No
 	 * prescaler -- the F411 timer clock matches the WS2812B 1.25 us
 	 * period directly when ARR = 119. */
 	LL_TIM_InitTypeDef tim = {0};
@@ -316,10 +324,14 @@ void ws2812b_Init(uint8_t led_type)
 	/* TIM1 advanced -> BDTR.MOE must be set or outputs stay tristated. */
 	LL_TIM_EnableAllOutputs(TIM1);
 
-	/* TIM1_CH3 -> DMA2 Stream 6 Channel 6 (RM0383 Table 28). Half-word
-	 * transfers, peripheral fixed at TIM1->CCR3, memory increments
-	 * through DMABuffer, circular so the half/full IRQs keep refilling
-	 * indefinitely until DMASend disables the stream. */
+	/* TIM1_CH3 -> DMA2 Stream 6. On STM32F4 the TIM1_CH3 request appears on
+	 * BOTH Channel 0 (the grouped TIM1_CH1/CH2/CH3 entry) and Channel 6 (the
+	 * dedicated TIM1 column) of Stream 6 per RM0383 Table 28, so Channel 6 is
+	 * valid. NOT yet scope-verified on hardware (anpeaco/FreeJoyX issue: WS2812B
+	 * DMA verify) -- if addressable LEDs don't light on the BlackPill, switch
+	 * this to LL_DMA_CHANNEL_0 first and re-scope PA10. Half-word transfers,
+	 * peripheral fixed at TIM1->CCR3, memory increments through DMABuffer,
+	 * circular so the half/full IRQs keep refilling until DMASend disables it. */
 	LL_DMA_InitTypeDef dma = {0};
 	dma.Channel              = LL_DMA_CHANNEL_6;
 	dma.Direction            = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
