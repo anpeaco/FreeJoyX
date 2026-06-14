@@ -24,6 +24,7 @@
 
 #include "config.h"
 #include "board_flash.h"
+#include "buttons.h"		/* Button_IsPovDirection */
 
 
 app_config_t app_config;
@@ -152,7 +153,12 @@ void AppConfigInit (dev_config_t * p_dev_config)
 		app_config.pov_cnt = ((app_config.pov & 0x08)>>3) + ((app_config.pov & 0x04)>>2) + 
 												 ((app_config.pov & 0x02)>>1) + (app_config.pov & 0x01);
 		
-		if (!p_dev_config->buttons[i].is_disabled && p_dev_config->buttons[i].physical_num >=0)
+		/* A slot occupies a HID button position if it is bound and is not a
+		 * POV-hat direction (those feed the hat, not the button bitmap).
+		 * MUTED slots (is_disabled, the eye toggle) are still counted -- they
+		 * keep their button number and report as 0 (see buttons.c output). */
+		if (p_dev_config->buttons[i].physical_num >= 0 &&
+		    !Button_IsPovDirection(p_dev_config->buttons[i].type))
 		{
 			app_config.buttons_cnt++;
 		}

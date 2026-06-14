@@ -1310,20 +1310,30 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 	
 	for (int i=0;i<MAX_BUTTONS_NUM;i++)
 	{
-			uint8_t is_enabled = !p_dev_config->buttons[i].is_disabled && (p_dev_config->buttons[i].physical_num >= 0);
+			// A slot occupies a HID button position if it is bound and is not a
+			// POV-hat direction (those feed the hat, handled above). MUTED slots
+			// (is_disabled, the eye toggle) still occupy their position so the
+			// button numbering of later slots doesn't shift -- they just report
+			// 0 (out_buttons_data was memset to 0, so we leave the bit clear and
+			// only advance k).
+			uint8_t is_button = (p_dev_config->buttons[i].physical_num >= 0) &&
+			                    !Button_IsPovDirection(p_dev_config->buttons[i].type);
 			// joy buttons
-			if (is_enabled)
+			if (is_button)
 			{
-				//out_buttons_data[(k & 0xF8)>>3] &= ~(1 << (k & 0x07));
-				if (!p_dev_config->buttons[i].is_inverted)
-				{					
-					out_buttons_data[(k & 0xF8)>>3] |= (logical_buttons_state[i].current_state << (k & 0x07));
-				}
-				else
+				if (!p_dev_config->buttons[i].is_disabled)
 				{
-					out_buttons_data[(k & 0xF8)>>3] |= (!logical_buttons_state[i].current_state << (k & 0x07));
+					if (!p_dev_config->buttons[i].is_inverted)
+					{
+						out_buttons_data[(k & 0xF8)>>3] |= (logical_buttons_state[i].current_state << (k & 0x07));
+					}
+					else
+					{
+						out_buttons_data[(k & 0xF8)>>3] |= (!logical_buttons_state[i].current_state << (k & 0x07));
+					}
 				}
-				k++;				
+				// muted (is_disabled): bit stays 0, position still consumed.
+				k++;
 			}
 			// logical buttons
 			if (!p_dev_config->buttons[i].is_inverted)
