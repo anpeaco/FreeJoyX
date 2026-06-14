@@ -312,13 +312,18 @@ static uint8_t USBD_FreeJoy_Setup(USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef
 			 * OutEvent because our protocol only sends OUT reports
 			 * to interface 1. (A SET_REPORT on the joystick interface
 			 * would be unusual; we still accept it but discard.) */
-			if (req->wLength > FREEJOY_OUTREPORT_BUF_SIZE) {
+			/* Reject zero-length (nothing to receive -- arming a 0-byte RX
+			 * would otherwise fire EP0_RxReady and re-dispatch stale data)
+			 * and over-long requests. Stage into the dedicated set_report_buf
+			 * so the EP2 interrupt-OUT pipe's buffer is never aliased. */
+			if (req->wLength == 0U || req->wLength > FREEJOY_OUTREPORT_BUF_SIZE) {
 				USBD_CtlError(pdev, req);
 				return (uint8_t)USBD_FAIL;
 			}
 			h->set_report_pending      = 1U;
 			h->set_report_target_iface = iface;
-			(void)USBD_CtlPrepareRx(pdev, h->ep2_out_buf, req->wLength);
+			h->set_report_len          = (uint8_t)req->wLength;
+			(void)USBD_CtlPrepareRx(pdev, h->set_report_buf, req->wLength);
 			break;
 
 		default:
@@ -409,9 +414,10 @@ static uint8_t USBD_FreeJoy_EP0_RxReady(USBD_HandleTypeDef *pdev)
 
 	if (h->set_report_pending) {
 		h->set_report_pending = 0U;
-		if (h->set_report_target_iface == 1U) {
-			FreeJoy_CfgOutEvent(h->ep2_out_buf);
+		if (h->set_report_target_iface == 1U && h->set_report_len > 0U) {
+			FreeJoy_CfgOutEvent(h->set_report_buf);
 		}
+		h->set_report_len = 0U;
 		/* iface 0 (joystick) SET_REPORT: no app-side handler, drop. */
 	}
 	return (uint8_t)USBD_OK;

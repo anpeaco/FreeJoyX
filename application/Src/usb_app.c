@@ -80,37 +80,62 @@ volatile int32_t  joy_millis          = 0;
 volatile int32_t  configurator_millis = 0;
 
 #ifdef BOARD_F411_BLACKPILL
-/* F411 single-interface: all REPORT_ID INs share EP1 IN, so the
- * App_HidOutDispatch path can't reliably send a response from USB IRQ
- * context (the previous tick's joy report is still in flight). Queue
- * the response in this one-deep buffer and let Board_TickISR drain it
- * on a free tick. */
-static uint8_t  pending_in_buf[64];
-static uint16_t pending_in_len = 0;
-static volatile uint8_t pending_in_active = 0;
+/* F411 config-response queue. Configurator IN responses (CONFIG_IN,
+ * CONFIG_OUT, checksum) are produced in USB-OUT IRQ context by
+ * App_HidOutDispatch, but F411's OTG-FS Transmit is asynchronous and can
+ * return BUSY mid-transfer (unlike F103's synchronous PMA write). A small
+ * single-producer (USB IRQ) / single-consumer (TIM2 tick IRQ) ring buffer
+ * holds responses until the EP accepts them. Both IRQs run at NVIC priority
+ * 3 so they never preempt each other -- the producer owns head, the consumer
+ * owns tail. The previous one-deep slot silently overwrote a pending
+ * response when two landed in one tick window, which the host saw as a
+ * stalled / blank Read or Write (the open F411 Read/Write regression). */
+#define PENDING_IN_RING_SIZE 4U   /* power of two -- cheap wrap mask */
+typedef struct {
+	uint8_t buf[64];
+	uint8_t len;
+} pending_in_entry_t;
+static pending_in_entry_t  pending_in_ring[PENDING_IN_RING_SIZE];
+static volatile uint8_t    pending_in_head = 0;  /* producer (USB IRQ) writes here */
+static volatile uint8_t    pending_in_tail = 0;  /* consumer (tick IRQ) drains here */
 
 /* Diagnostic counters so we can tell which step is firing on each
  * Read-Config attempt. Surface them by toggling PC13 in distinct
  * patterns from Board_TickISR. */
 volatile uint16_t diag_out_count    = 0;  /* CONFIG_IN OUT received from host */
-volatile uint16_t diag_queue_count  = 0;  /* response queued (first-try BUSY) */
+volatile uint16_t diag_queue_count  = 0;  /* response queued (EP busy) */
+volatile uint16_t diag_queue_drop   = 0;  /* ring full -- response dropped */
 volatile uint16_t diag_drain_ok     = 0;  /* drain succeeded */
 volatile uint16_t diag_drain_busy   = 0;  /* drain returned BUSY this tick */
 
+static inline uint8_t App_PendingInEmpty(void)
+{
+	return (uint8_t)(pending_in_head == pending_in_tail);
+}
+
 static void App_QueueOrSendInReport(uint8_t report_id, const uint8_t *data, uint16_t length)
 {
-	/* Try once -- if the EP is idle (rare in IRQ context but possible)
-	 * the response goes out immediately and we skip the queue. */
-	if (Board_USB_SendReport(report_id, (uint8_t *)data, length) == 0) {
+	if (length > 64U) length = 64U;
+
+	/* Preserve request/response ordering: only send straight away when the
+	 * ring is empty, otherwise queue behind the already-pending entries so
+	 * they don't get reordered. */
+	if (App_PendingInEmpty() &&
+	    Board_USB_SendReport(report_id, (uint8_t *)data, (uint8_t)length) == 0) {
 		return;
 	}
-	/* Otherwise stash for Board_TickISR to drain. Overwrites any
-	 * previously-pending response -- the protocol is request/response
-	 * sequential so this shouldn't lose anything in practice. */
-	if (length > sizeof(pending_in_buf)) length = sizeof(pending_in_buf);
-	memcpy(pending_in_buf, data, length);
-	pending_in_len    = length;
-	pending_in_active = 1;
+
+	uint8_t next = (uint8_t)((pending_in_head + 1U) & (PENDING_IN_RING_SIZE - 1U));
+	if (next == pending_in_tail) {
+		/* Ring full -- the consumer isn't keeping up. Drop the newest; the
+		 * host times out and retries. Should not happen for the sequential
+		 * request/response protocol with a 4-deep ring. */
+		diag_queue_drop++;
+		return;
+	}
+	memcpy(pending_in_ring[pending_in_head].buf, data, length);
+	pending_in_ring[pending_in_head].len = (uint8_t)length;
+	pending_in_head = next;
 	diag_queue_count++;
 }
 #endif
@@ -374,12 +399,14 @@ void Board_TickISR(void)
 	 * split, so draining a fragment on EP2 doesn't contend with the joy send on
 	 * EP1 -- suppressing joy/params for the whole transfer was a single-EP-era
 	 * leftover that needlessly stalled the joystick during config reads/writes. */
-	if (pending_in_active) {
-		if (Board_USB_SendReport(0, pending_in_buf, pending_in_len) == 0) {
-			pending_in_active = 0;
+	while (!App_PendingInEmpty()) {
+		pending_in_entry_t *e = &pending_in_ring[pending_in_tail];
+		if (Board_USB_SendReport(0, e->buf, e->len) == 0) {
+			pending_in_tail = (uint8_t)((pending_in_tail + 1U) & (PENDING_IN_RING_SIZE - 1U));
 			diag_drain_ok++;
 		} else {
 			diag_drain_busy++;
+			break;	/* EP busy -- retry remaining entries next tick */
 		}
 	}
 
@@ -405,7 +432,7 @@ void Board_TickISR(void)
 			 * response that's still pending, it stays on
 			 * indefinitely (drain failing). If drain_ok keeps
 			 * up, the LED briefly blips off. */
-			if (pending_in_active) {
+			if (!App_PendingInEmpty()) {
 				GPIOC->BSRR = GPIO_BSRR_BR_13;  /* on (active low) */
 			} else {
 				GPIOC->BSRR = GPIO_BSRR_BS_13;  /* off */

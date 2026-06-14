@@ -72,9 +72,15 @@ typedef struct {
 	uint8_t             cfg_alt_setting;
 
 	/* SET_REPORT staging. EP0 RxReady demuxes to the configurator's
-	 * OutEvent; the joystick interface has no SET_REPORT path. */
+	 * OutEvent; the joystick interface has no SET_REPORT path. The control
+	 * (EP0) SET_REPORT path has its OWN buffer, separate from ep2_out_buf,
+	 * so a SET_REPORT data stage can't be clobbered by (or clobber) an
+	 * interrupt-OUT report landing on EP2 concurrently. */
 	uint8_t             set_report_pending;
 	uint8_t             set_report_target_iface;
+	uint8_t             set_report_len;
+	uint8_t             set_report_buf[FREEJOY_OUTREPORT_BUF_SIZE];
+	/* Interrupt OUT (EP2) receive buffer -- dedicated to the OUT pipe. */
 	uint8_t             ep2_out_buf[FREEJOY_OUTREPORT_BUF_SIZE];
 } USBD_FreeJoy_HandleTypeDef;
 
