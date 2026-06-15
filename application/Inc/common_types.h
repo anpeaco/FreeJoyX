@@ -436,6 +436,29 @@ typedef struct
 } shift_reg_config_t;
 
 
+/******************** I2C GPIO EXPANDERS **********************/
+// MCP23017 16-bit I2C GPIO expander used as a BUTTON source (NOT a sensor --
+// the MCP320x entries in sensor_t are SPI ADCs feeding axes; this is digital
+// buttons). Modelled on the shift-register subsystem: each enabled chip
+// contributes up to 16 buttons into the physical-button scan. Rides the
+// existing I2C bus (SCL/SDA assigned in pin_config); the chip is selected by
+// its I2C address (A2:A1:A0 strap, 0x20..0x27). See MCP23017_PLAN.md.
+enum
+{
+	I2C_GPIO_MCP23017 = 0,
+};
+typedef uint8_t i2c_gpio_type_t;
+
+typedef struct
+{
+	uint8_t 			type;			// i2c_gpio_type_t
+	uint8_t 			address;		// 0x20..0x27; 0 = slot disabled
+	uint8_t 			button_cnt;		// 0..16 buttons exposed by this chip
+	uint8_t 			flags;			// bit0 pull-ups (GPPU), bit1 invert (IPOL), rest reserved
+
+} i2c_gpio_t;
+
+
 /******************** SHIFT MODIFICATORS **********************/
 typedef struct 
 {
@@ -589,6 +612,12 @@ typedef struct
 	// all-zero as "no snapshot available" and falls back to the in-session
 	// auto-remap baseline.
 	phys_breakdown_t		saved_breakdown;
+
+	// config 17 -- I2C GPIO button expanders (MCP23017). Appended at the very
+	// end of dev_config_t so the 0x0020 -> 0x0030 migration is a prefix-copy of
+	// the old bytes + zero of this field: offsetof(dev_config_t, i2c_gpio)
+	// equals the old config size (1580). See MCP23017_PLAN.md.
+	i2c_gpio_t				i2c_gpio[MAX_I2C_GPIO_NUM];
 
 }dev_config_t;
 
