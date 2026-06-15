@@ -57,6 +57,7 @@ FreeJoyX supports the following external periphery:
 - **2 hardware-quadrature (fast) encoders** — Enc 1 on TIM1 (PA8/PA9), Enc 2 on TIM4 (PB6/PB7), opt-in
 - 16 software incremental encoders
 - shift registers 74HC165 and CD4021
+- MCP23017 I2C GPIO expanders — up to 4 chips on the shared I2C bus (addresses 0x20–0x27), 16 buttons each
 - digital sensors TLE5010/5011, TLE5012B, AS5048A, AS5600, MLX90393 (SPI interface only)
 - external ADCs ADS1115 and MCP3201/02/04/08
 - 4 PWM channels for lighting
@@ -91,7 +92,7 @@ axis-bound). See `AXIS_DETECT_PLAN.md`.
 
 ## Buttons
 
-Up to 128 digital inputs can be wired as single inputs (tied to VCC or GND), button matrices, shift register inputs, or axis-to-buttons inputs. Each slot can be configured as:
+Up to 128 digital inputs can be wired as single inputs (tied to VCC or GND), button matrices, shift register inputs, MCP23017 I2C GPIO expander inputs, or axis-to-buttons inputs. Each slot can be configured as:
 
 * Regular push button
 * Inverted push button
