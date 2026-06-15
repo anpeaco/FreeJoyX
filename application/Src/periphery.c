@@ -351,7 +351,8 @@ void IO_Init (dev_config_t * p_dev_config)
 						 p_dev_config->pins[i] == MCP3208_CS ||
 						 p_dev_config->pins[i] == MLX90363_CS ||
 						 p_dev_config->pins[i] == MLX90393_CS ||
-						 p_dev_config->pins[i] == AS5048A_CS)
+						 p_dev_config->pins[i] == AS5048A_CS ||
+						 p_dev_config->pins[i] == SPI_GPIO_CS)	// MCP23S17 expander CS
 		{
 			Board_PinSetMode(i, BOARD_GPIO_OUTPUT_PUSHPULL, BOARD_GPIO_SPEED_50MHZ);
 			Board_PinWrite(i, 1);

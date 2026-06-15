@@ -31,7 +31,7 @@
 #include "config.h"
 #include "analog.h"
 #include "buttons.h"
-#include "mcp23017.h"
+#include "gpio_expander.h"
 #include "leds.h"
 #include "encoders.h"
 #include "led_effects.h"
@@ -99,7 +99,7 @@ int main(void)
 
 	EncodersInit(&dev_config);	// add rgb timer check. what?
 	ShiftRegistersInit(&dev_config);
-	I2cGpioInit(&dev_config);	// MCP23017 I2C GPIO expanders (bus idle at init)
+	GpioExp_Init(&dev_config);	// GPIO expanders MCP23017 (I2C) / MCP23S17 (SPI); bus idle at init
 	RadioButtons_Init(&dev_config);
 	SequentialButtons_Init(&dev_config);
 	Gestures_Init(&dev_config);
@@ -119,7 +119,7 @@ int main(void)
 	
   while (1)
   {
-		I2cGpioProcess(&dev_config);	// blocking MCP23017 read -> cache (bus-gated); ISR folds it
+		GpioExp_Process(&dev_config);	// blocking expander read -> cache (bus-gated); ISR folds it
 		ButtonsDebounceProcess(&dev_config);
 		ButtonsReadLogical(&dev_config);
 		
