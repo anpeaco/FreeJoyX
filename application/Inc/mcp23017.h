@@ -24,7 +24,7 @@
 
 #include "common_types.h"
 
-/* flags bits in i2c_gpio_t.flags */
+/* flags bits in gpio_expander_t.flags */
 #define I2C_GPIO_FLAG_PULLUPS		0x01	/* enable the chip's internal pull-ups (GPPU) */
 #define I2C_GPIO_FLAG_INVERT		0x02	/* invert input polarity (IPOL) */
 

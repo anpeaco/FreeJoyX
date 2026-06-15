@@ -60,8 +60,8 @@ int main(void)
 
     /* --- end-to-end Init -> Process -> Get with a faked chip --- */
     dev_config_t cfg; memset(&cfg, 0, sizeof(cfg));
-    cfg.i2c_gpio[0].address    = 0x20;
-    cfg.i2c_gpio[0].button_cnt = 12;
+    cfg.gpio_expanders[0].address    = 0x20;
+    cfg.gpio_expanders[0].button_cnt = 12;
     I2cGpioInit(&cfg);                 /* WriteBlocking ACKs -> slot present */
     g_fake_gpio = 0x0A03;              /* GPIOA=0x03 (b0,b1), GPIOB=0x0A (b9,b11) */
     I2cGpioProcess(&cfg);
@@ -72,7 +72,7 @@ int main(void)
     CHECK(buf[9] == 1 && buf[10] == 0 && buf[11] == 1);
 
     /* --- bus busy: Process must not touch the bus (cache holds) --- */
-    cfg.i2c_gpio[0].button_cnt = 16;
+    cfg.gpio_expanders[0].button_cnt = 16;
     sensors[0].source = (int8_t)SOURCE_I2C; sensors[0].rx_complete = 0;  /* DMA in flight */
     g_fake_gpio = 0xFFFF;
     I2cGpioProcess(&cfg);              /* should early-return */

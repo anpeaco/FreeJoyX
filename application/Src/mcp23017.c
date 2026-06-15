@@ -24,11 +24,11 @@
 /* Latest GPIOA(=[0]) / GPIOB(=[1]) per slot, refreshed by I2cGpioProcess and
  * consumed by I2cGpioGet. uint8 element writes are atomic on Cortex-M, so the
  * ISR-side fold never sees a half-written byte. */
-static uint8_t i2c_gpio_data[MAX_I2C_GPIO_NUM][2];
+static uint8_t i2c_gpio_data[MAX_GPIO_EXPANDER_NUM][2];
 
 /* Slot present == its IODIR write ACKed at init. Lets I2cGpioProcess skip a
  * misconfigured / absent address instead of stalling on a per-read timeout. */
-static uint8_t i2c_gpio_present[MAX_I2C_GPIO_NUM];
+static uint8_t i2c_gpio_present[MAX_GPIO_EXPANDER_NUM];
 
 /* True only when no I2C sensor (ADS1115 / AS5600 / MLX90393_I2C) has a DMA
  * transfer in flight, so a blocking expander read can't corrupt it. */
@@ -47,16 +47,16 @@ static uint8_t I2cBusIdle (void)
 
 void I2cGpioInit (dev_config_t * p_dev_config)
 {
-	for (uint8_t i = 0; i < MAX_I2C_GPIO_NUM; i++)
+	for (uint8_t i = 0; i < MAX_GPIO_EXPANDER_NUM; i++)
 	{
 		i2c_gpio_data[i][0]  = 0;
 		i2c_gpio_data[i][1]  = 0;
 		i2c_gpio_present[i]  = 0;
 
-		uint8_t addr = p_dev_config->i2c_gpio[i].address;
+		uint8_t addr = p_dev_config->gpio_expanders[i].address;
 		if (addr == 0) continue;					/* disabled slot */
 
-		uint8_t flags  = p_dev_config->i2c_gpio[i].flags;
+		uint8_t flags  = p_dev_config->gpio_expanders[i].flags;
 		uint8_t pull   = (flags & I2C_GPIO_FLAG_PULLUPS) ? 0xFF : 0x00;
 		/* GND-wired buttons read LOW when pressed, so invert in hardware by
 		 * default (set bit == pressed); the INVERT flag flips that back. */
@@ -78,11 +78,11 @@ void I2cGpioProcess (dev_config_t * p_dev_config)
 {
 	if (!I2cBusIdle()) return;						/* sensor DMA owns the bus */
 
-	for (uint8_t i = 0; i < MAX_I2C_GPIO_NUM; i++)
+	for (uint8_t i = 0; i < MAX_GPIO_EXPANDER_NUM; i++)
 	{
 		if (!i2c_gpio_present[i]) continue;
 		uint8_t buf[2];
-		if (I2C_ReadBlocking(p_dev_config->i2c_gpio[i].address,
+		if (I2C_ReadBlocking(p_dev_config->gpio_expanders[i].address,
 		                     MCP23017_GPIOA, buf, 2, 0) == 0)
 		{
 			i2c_gpio_data[i][0] = buf[0];
@@ -105,12 +105,12 @@ void I2cGpio_FoldBits (uint16_t gpio, uint8_t button_cnt,
 
 void I2cGpioGet (uint8_t * raw_button_data_buf, dev_config_t * p_dev_config, uint8_t * pos)
 {
-	for (uint8_t i = 0; i < MAX_I2C_GPIO_NUM; i++)
+	for (uint8_t i = 0; i < MAX_GPIO_EXPANDER_NUM; i++)
 	{
-		if (p_dev_config->i2c_gpio[i].address == 0) continue;
+		if (p_dev_config->gpio_expanders[i].address == 0) continue;
 		uint16_t gpio = (uint16_t)i2c_gpio_data[i][0] |
 		                ((uint16_t)i2c_gpio_data[i][1] << 8);
-		I2cGpio_FoldBits(gpio, p_dev_config->i2c_gpio[i].button_cnt,
+		I2cGpio_FoldBits(gpio, p_dev_config->gpio_expanders[i].button_cnt,
 		                 raw_button_data_buf, pos, MAX_BUTTONS_NUM);
 	}
 }
