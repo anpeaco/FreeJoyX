@@ -29,6 +29,8 @@
 #include "board_pins.h"
 #include "i2c.h"
 #include "spi.h"
+#include "gpio_expander.h"	/* gpio_exp_bus_busy: the expander reuses the SPI DMA, so its
+							   completion reaches these handlers -- skip while it owns the bus */
 
 #ifdef BOARD_F103_BLUEPILL
 #include "stm32f10x.h"
@@ -40,6 +42,12 @@
 void Sensor_OnSpiRxComplete(void)
 {
 	uint8_t i = 0;
+
+	/* The expander's own SPI transfer reuses this DMA channel and so reaches
+	 * this handler on completion. While the expander owns the bus, no sensor
+	 * transfer is in flight, so there is nothing to service -- and re-arming a
+	 * sensor here would collide with the expander's transfer. Bail out. */
+	if (gpio_exp_bus_busy) return;
 
 	/* Wait SPI transfer to end. SPI1->SR.BSY is on both F1 and F4
 	 * peripherals -- direct register access is portable. */
@@ -119,6 +127,10 @@ void Sensor_OnSpiRxComplete(void)
 void Sensor_OnSpiTxComplete(void)
 {
 	uint8_t i = 0;
+
+	/* As in Sensor_OnSpiRxComplete: the expander's transfer reaches this
+	 * handler too -- skip while it owns the bus (no sensor in flight). */
+	if (gpio_exp_bus_busy) return;
 
 	/* Drain SPI -- TXE then BSY clear. Both registers are direct
 	 * access on F1 and F4. */

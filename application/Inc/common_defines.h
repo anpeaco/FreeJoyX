@@ -37,7 +37,7 @@
  * at the bottom of common_types.h fail the build if the struct shape
  * drifts without bumping these. Sister rule lives in CLAUDE.md
  * ("Wire-format archival rule"). */
-#define FREEJOY_DEV_CONFIG_SIZE				1612			/* 1580 -> 1612: +32 for gpio_expanders[MAX_GPIO_EXPANDER_NUM] (8 x 4B MCP23017/MCP23S17 expander slots), appended at the end of dev_config_t. The old (0x0020) size 1580 == offsetof(dev_config_t, gpio_expanders). */
+#define FREEJOY_DEV_CONFIG_SIZE				1620			/* 1580 -> 1612: +32 for gpio_expanders[MAX_GPIO_EXPANDER_NUM] (8 x 4B MCP23017/MCP23S17 expander slots); 1612 -> 1620: +8 for saved_per_exp[MAX_GPIO_EXPANDER_NUM] (per-expander remap snapshot). Both appended at the end of dev_config_t, so the old (0x0020) size 1580 still == offsetof(dev_config_t, gpio_expanders) and the prefix migration is unchanged. Still 0x0030 -- the 1612 shape was never released. */
 /* 72 -> 88: params_report_t gained detect_axis_raw[MAX_AXIS_NUM] (8 * int16)
  * for axis auto-detect (AXIS_DETECT_PLAN.md). params-report-only change --
  * dev_config_t is untouched, so no FIRMWARE_VERSION 0xFFF0 cross / factory

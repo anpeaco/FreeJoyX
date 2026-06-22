@@ -51,4 +51,15 @@ void GpioExp_Get (uint8_t * raw_button_data_buf, dev_config_t * p_dev_config, ui
 void GpioExp_FoldBits (uint16_t gpio, uint8_t button_cnt,
                        uint8_t * raw_button_data_buf, uint8_t * pos, uint8_t max);
 
+/* Set non-zero by GpioExp_Process for the duration of an expander bus transfer.
+ * The expander shares the SPI/I2C peripheral (and the SPI DMA channels) with the
+ * sensors, but its blocking read runs in the main loop while the sensor DMA is
+ * armed from Board_TickISR -- so BusIdle() alone isn't atomic against a tick
+ * preempting between the gate and the transfer. The tick-ISR sensor kickoff and
+ * the shared DMA-completion dispatch (Sensor_OnSpi{Rx,Tx}Complete) both honour
+ * this flag: while it is set, no sensor transfer is started or re-armed, so the
+ * expander owns the bus uncontended. Single-byte volatile -> atomic on Cortex-M;
+ * written only by the main loop, read by the ISR. */
+extern volatile uint8_t gpio_exp_bus_busy;
+
 #endif	/* __GPIO_EXPANDER_H__ */

@@ -36,6 +36,10 @@ static uint8_t exp_data[MAX_GPIO_EXPANDER_NUM][2];	/* latest GPIOA/GPIOB per slo
 static uint8_t exp_present[MAX_GPIO_EXPANDER_NUM];	/* slot is responding / wired */
 static int8_t  exp_cs[MAX_GPIO_EXPANDER_NUM];		/* SPI CS pin index, -1 for I2C/unused */
 
+/* See gpio_expander.h: the tick-ISR sensor kickoff and Sensor_OnSpi*Complete
+ * skip while this is set, so the expander owns the bus during its transfer. */
+volatile uint8_t gpio_exp_bus_busy = 0;
+
 static uint8_t slot_is_i2c (const dev_config_t * c, uint8_t i)
 {
 	return c->gpio_expanders[i].type == GPIO_EXP_MCP23017 &&
@@ -90,6 +94,16 @@ void GpioExp_Init (dev_config_t * p_dev_config)
 	for (uint8_t p = 0; p < USED_PINS_NUM && cs_idx < MAX_GPIO_EXPANDER_NUM; p++)
 		if (p_dev_config->pins[p] == SPI_GPIO_CS) cs_pins[cs_idx++] = (int8_t)p;
 
+	/* Only touch a bus whose pins were actually assigned (and so whose
+	 * peripheral SPI_Start/I2C_Start brought up in periphery.c). Probing an
+	 * un-started peripheral would otherwise burn a per-transfer timeout for
+	 * every configured-but-unwired expander. */
+	uint8_t i2c_bus_up = 0, spi_bus_up = 0;
+	for (uint8_t p = 0; p < USED_PINS_NUM; p++) {
+		if (p_dev_config->pins[p] == I2C_SCL)                                i2c_bus_up = 1;
+		else if (p_dev_config->pins[p] == SPI_SCK || p_dev_config->pins[p] == SPI_MOSI) spi_bus_up = 1;
+	}
+
 	uint8_t next_cs = 0;
 	for (uint8_t i = 0; i < MAX_GPIO_EXPANDER_NUM; i++)
 	{
@@ -102,7 +116,7 @@ void GpioExp_Init (dev_config_t * p_dev_config)
 		 * default (set bit == pressed); the INVERT flag flips that back. */
 		const uint8_t ipol  = (flags & GPIO_EXP_FLAG_INVERT) ? 0x00 : 0xFF;
 
-		if (slot_is_i2c(p_dev_config, i))
+		if (slot_is_i2c(p_dev_config, i) && i2c_bus_up)
 		{
 			const uint8_t addr = p_dev_config->gpio_expanders[i].address;
 			uint8_t iodir_ab[2] = { 0xFF, 0xFF };
@@ -115,12 +129,15 @@ void GpioExp_Init (dev_config_t * p_dev_config)
 			I2C_WriteBlocking(addr, MCP_IPOLA, ipol_ab, 2);
 			exp_present[i] = 1;
 		}
-		else if (slot_is_spi(p_dev_config, i) && next_cs < cs_idx)
+		else if (slot_is_spi(p_dev_config, i) && spi_bus_up && next_cs < cs_idx)
 		{
 			const int8_t  cs = cs_pins[next_cs++];
 			const uint8_t hw = p_dev_config->gpio_expanders[i].address & 0x07;
 			exp_cs[i] = cs;
-			/* HAEN so the hardware-address strap is honoured (multi-chip per CS). */
+			/* One MCP23S17 per CS line (the MVP: the configurator assigns one CS
+			 * pin per SPI slot and writes address 0, so hw == 0). HAEN is set
+			 * defensively so the strap is honoured if a future build exposes a
+			 * per-chip hardware address for sharing one CS across chips. */
 			spi_write_reg(cs, hw, MCP_IOCON, MCP_IOCON_HAEN, MCP_IOCON_HAEN);
 			spi_write_reg(cs, hw, MCP_IODIRA, 0xFF, 0xFF);
 			spi_write_reg(cs, hw, MCP_GPPUA, pull, pull);
@@ -132,7 +149,14 @@ void GpioExp_Init (dev_config_t * p_dev_config)
 
 void GpioExp_Process (dev_config_t * p_dev_config)
 {
-	if (!BusIdle()) return;						/* a sensor owns the bus this tick */
+	/* Claim the bus BEFORE the idle check, so the ordering is race-free against
+	 * the tick ISR: set busy -> if a sensor is already mid-transfer (BusIdle
+	 * false) back off and let it finish; otherwise we hold the claim and the
+	 * tick-ISR kickoff (which reads gpio_exp_bus_busy) won't start a sensor
+	 * until we clear it. The narrow "ISR fired between set and check" case is
+	 * safe: the ISR sees busy and skips, BusIdle still reads idle, we proceed. */
+	gpio_exp_bus_busy = 1;
+	if (!BusIdle()) { gpio_exp_bus_busy = 0; return; }	/* a sensor owns the bus this tick */
 
 	for (uint8_t i = 0; i < MAX_GPIO_EXPANDER_NUM; i++)
 	{
@@ -158,6 +182,8 @@ void GpioExp_Process (dev_config_t * p_dev_config)
 			exp_data[i][1] = rx[3];				/* GPIOB */
 		}
 	}
+
+	gpio_exp_bus_busy = 0;						/* release the bus to the sensors */
 }
 
 void GpioExp_FoldBits (uint16_t gpio, uint8_t button_cnt,

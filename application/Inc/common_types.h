@@ -632,6 +632,14 @@ typedef struct
 	// See MCP23017_PLAN.md.
 	gpio_expander_t			gpio_expanders[MAX_GPIO_EXPANDER_NUM];
 
+	// Companion per-expander button-count snapshot for saved_breakdown above.
+	// The auto-remap needs the historical expander layout, but phys_breakdown_t
+	// sits before gpio_expanders and can't grow without shifting the 0x0020
+	// migration boundary -- so the expander column lives here, appended at the
+	// very end. Configurator-only metadata; firmware ignores it. Zero on
+	// factory-reset / pre-0x0030 configs.
+	uint8_t					saved_per_exp[MAX_GPIO_EXPANDER_NUM];
+
 }dev_config_t;
 
 

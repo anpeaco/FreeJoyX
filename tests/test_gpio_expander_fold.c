@@ -65,6 +65,10 @@ int main(void)
     /* --- I2C (MCP23017) end-to-end --- */
     dev_config_t cfg; memset(&cfg, 0, sizeof(cfg));
     for (int i = 0; i < USED_PINS_NUM; i++) cfg.pins[i] = 0;   /* NOT_USED */
+    /* GpioExp_Init only touches a bus whose pins are assigned (so it can't stall
+     * on an un-started peripheral). The I2C slot needs an I2C_SCL pin present. */
+    cfg.pins[0] = I2C_SCL;
+    cfg.pins[1] = I2C_SDA;
     cfg.gpio_expanders[0].type       = GPIO_EXP_MCP23017;
     cfg.gpio_expanders[0].address    = 0x20;
     cfg.gpio_expanders[0].button_cnt = 12;
@@ -80,6 +84,8 @@ int main(void)
     cfg.gpio_expanders[1].type       = GPIO_EXP_MCP23S17;
     cfg.gpio_expanders[1].address    = 0;            /* hw subaddr 0 */
     cfg.gpio_expanders[1].button_cnt = 10;
+    cfg.pins[3]            = SPI_SCK;     /* SPI bus must be assigned for the SPI slot */
+    cfg.pins[4]            = SPI_MOSI;
     cfg.pins[5]            = SPI_GPIO_CS;
     pin_config[5].port    = &g_cs_port;
     pin_config[5].pin     = 0x0001;
@@ -100,6 +106,21 @@ int main(void)
     memset(buf, 0, sizeof(buf)); pos = 0;
     GpioExp_Get(buf, &cfg, &pos);
     CHECK(buf[2] == 0 && buf[12] == 0);  /* still the old 0x0A03 / 0x0102 values */
+
+    /* --- bus pins absent: a configured expander whose bus was never assigned
+       must stay un-present (no peripheral poke), so it folds nothing. --- */
+    busIdle();
+    dev_config_t nobus; memset(&nobus, 0, sizeof(nobus));
+    for (int i = 0; i < USED_PINS_NUM; i++) nobus.pins[i] = 0;   /* no I2C_SCL / SPI_SCK */
+    nobus.gpio_expanders[0].type       = GPIO_EXP_MCP23017;
+    nobus.gpio_expanders[0].address    = 0x20;
+    nobus.gpio_expanders[0].button_cnt = 12;
+    g_i2c_gpio = 0xFFFF;
+    GpioExp_Init(&nobus);
+    GpioExp_Process(&nobus);
+    memset(buf, 0, sizeof(buf)); pos = 0;
+    GpioExp_Get(buf, &nobus, &pos);
+    CHECK(pos == 0);                     /* chip not present -> nothing folded */
 
     printf(fails ? "\n%d CHECK(S) FAILED\n" : "ALL GPIO-EXPANDER TESTS PASSED\n", fails);
     return fails ? 1 : 0;

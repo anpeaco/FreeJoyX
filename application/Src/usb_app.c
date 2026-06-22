@@ -58,6 +58,7 @@
 #include "as5048a.h"
 #include "ads1115.h"
 #include "as5600.h"
+#include "gpio_expander.h"		/* gpio_exp_bus_busy: hold off sensor DMA while the expander owns the bus */
 
 #include "board_usb.h"
 #include "board_misc.h"
@@ -568,8 +569,12 @@ void Board_TickISR(void)
 	}
 
 	/* External sensor DMA kickoff. Note the +1 guard: avoids overlapping
-	 * an ADC conversion with a SPI/I2C DMA start in the same tick. */
-	if (Ticks - sensors_ticks >= SENSORS_PERIOD_TICKS && Ticks > adc_ticks + 1) {
+	 * an ADC conversion with a SPI/I2C DMA start in the same tick. The
+	 * gpio_exp_bus_busy guard defers the kickoff a tick while a GPIO-expander
+	 * read holds the shared SPI/I2C bus (sensors_ticks isn't advanced, so it
+	 * simply retries next tick). */
+	if (Ticks - sensors_ticks >= SENSORS_PERIOD_TICKS && Ticks > adc_ticks + 1
+	    && !gpio_exp_bus_busy) {
 		sensors_ticks = Ticks;
 
 		/* SPI sensors (single-channel-at-a-time -- they share DMA
