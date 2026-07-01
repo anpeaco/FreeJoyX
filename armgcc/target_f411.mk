@@ -84,6 +84,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/simhub.c \
 ../application/Src/config.c \
 ../application/Src/shift_registers.c \
+../application/Src/gpio_expander.c \
 ../application/Src/leds.c \
 ../application/Src/led_effects.c \
 ../application/Src/tle5011.c \

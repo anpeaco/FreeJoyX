@@ -176,6 +176,11 @@ enum
 	LED_RGB_PL9823,
 
 	UART_TX,
+
+	// Appended at the end so existing role values don't shift (wire format).
+	// Chip-select for an MCP23S17 SPI GPIO expander; matched to SPI-type
+	// gpio_expanders[] slots in pin order (like shift-register control pins).
+	SPI_GPIO_CS,
 };
 typedef int8_t pin_t;
 
@@ -436,6 +441,36 @@ typedef struct
 } shift_reg_config_t;
 
 
+/******************** GPIO EXPANDERS **********************/
+// 16-bit GPIO expander used as a BUTTON source (NOT a sensor -- the MCP320x in
+// sensor_t are SPI ADCs feeding axes; this is digital buttons). Two transports
+// share one config pool and the same register map:
+//   MCP23017 -- I2C, selected by I2C address (0x20..0x27), rides the I2C bus.
+//   MCP23S17 -- SPI, selected by a dedicated CS pin (SPI_GPIO_CS role, matched
+//               to SPI-type expanders in pin order, like shift-register pins),
+//               rides the SPI bus.
+// Each enabled chip contributes up to 16 buttons to the physical-button scan,
+// modelled on the shift-register subsystem. A slot is active when:
+//   I2C: type == GPIO_EXP_MCP23017 && address in [0x20,0x27]
+//   SPI: type == GPIO_EXP_MCP23S17 (a CS pin is matched at init)
+// See MCP23017_PLAN.md.
+enum
+{
+	GPIO_EXP_MCP23017 = 0,	// I2C
+	GPIO_EXP_MCP23S17 = 1,	// SPI
+};
+typedef uint8_t gpio_expander_type_t;
+
+typedef struct
+{
+	uint8_t 			type;			// gpio_expander_type_t (I2C vs SPI)
+	uint8_t 			address;		// I2C: 0x20..0x27 (0 = disabled). SPI: hardware A2:A1:A0 (0..7)
+	uint8_t 			button_cnt;		// 0..16 buttons exposed by this chip
+	uint8_t 			flags;			// bit0 pull-ups (GPPU), bit1 invert (IPOL), rest reserved
+
+} gpio_expander_t;
+
+
 /******************** SHIFT MODIFICATORS **********************/
 typedef struct 
 {
@@ -589,6 +624,21 @@ typedef struct
 	// all-zero as "no snapshot available" and falls back to the in-session
 	// auto-remap baseline.
 	phys_breakdown_t		saved_breakdown;
+
+	// config 17 -- GPIO button expanders (MCP23017 I2C / MCP23S17 SPI). Appended
+	// at the very end of dev_config_t so the 0x0020 -> 0x0030 migration is a
+	// prefix-copy of the old bytes + zero of this field:
+	// offsetof(dev_config_t, gpio_expanders) equals the old config size (1580).
+	// See MCP23017_PLAN.md.
+	gpio_expander_t			gpio_expanders[MAX_GPIO_EXPANDER_NUM];
+
+	// Companion per-expander button-count snapshot for saved_breakdown above.
+	// The auto-remap needs the historical expander layout, but phys_breakdown_t
+	// sits before gpio_expanders and can't grow without shifting the 0x0020
+	// migration boundary -- so the expander column lives here, appended at the
+	// very end. Configurator-only metadata; firmware ignores it. Zero on
+	// factory-reset / pre-0x0030 configs.
+	uint8_t					saved_per_exp[MAX_GPIO_EXPANDER_NUM];
 
 }dev_config_t;
 

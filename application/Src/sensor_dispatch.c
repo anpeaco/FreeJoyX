@@ -29,6 +29,8 @@
 #include "board_pins.h"
 #include "i2c.h"
 #include "spi.h"
+#include "gpio_expander.h"	/* gpio_exp_bus_busy: the expander reuses the SPI DMA, so its
+							   completion reaches these handlers -- skip while it owns the bus */
 
 #ifdef BOARD_F103_BLUEPILL
 #include "stm32f10x.h"
@@ -40,6 +42,14 @@
 void Sensor_OnSpiRxComplete(void)
 {
 	uint8_t i = 0;
+
+	/* The expander's own SPI transfer reuses this DMA channel and so reaches
+	 * this handler on completion. Skip on gpio_exp_spi_active (set ONLY around
+	 * that transfer), NOT gpio_exp_bus_busy: the latter is held across all of
+	 * GpioExp_Process, including the window before BusIdle() backs off, where a
+	 * genuine sensor completion can still arrive and must be serviced (dropping
+	 * it clears the DMA flag in the IRQ handler and orphans the sensor forever). */
+	if (gpio_exp_spi_active) return;
 
 	/* Wait SPI transfer to end. SPI1->SR.BSY is on both F1 and F4
 	 * peripherals -- direct register access is portable. */
@@ -87,6 +97,14 @@ void Sensor_OnSpiRxComplete(void)
 		}
 	}
 
+	/* Don't chain a NEW sensor into a bus the expander is holding for its scan
+	 * (gpio_exp_bus_busy spans the whole GpioExp_Process, unlike gpio_exp_spi_active
+	 * which only spans one transfer). The just-completed sensor above was still
+	 * serviced; the next one is picked up by the tick-ISR kickoff once the
+	 * expander releases the bus. Guards the narrow case of a delayed expander-
+	 * transfer completion landing between per-slot reads. */
+	if (gpio_exp_bus_busy) return;
+
 	/* Process next SPI sensor. */
 	for ( ; i < MAX_AXIS_NUM; ++i) {
 		if (sensors[i].source >= 0 && sensors[i].rx_complete && sensors[i].tx_complete) {
@@ -119,6 +137,10 @@ void Sensor_OnSpiRxComplete(void)
 void Sensor_OnSpiTxComplete(void)
 {
 	uint8_t i = 0;
+
+	/* As in Sensor_OnSpiRxComplete: skip only our own transfer (gpio_exp_spi_active),
+	 * never on gpio_exp_bus_busy -- see the rationale there. */
+	if (gpio_exp_spi_active) return;
 
 	/* Drain SPI -- TXE then BSY clear. Both registers are direct
 	 * access on F1 and F4. */

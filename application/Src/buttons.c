@@ -23,6 +23,7 @@
   */
 
 #include "buttons.h"
+#include "gpio_expander.h"
 #include "string.h"
 
 uint8_t												raw_buttons_data[MAX_BUTTONS_NUM];
@@ -1179,6 +1180,7 @@ uint8_t ButtonsReadPhysical(dev_config_t * p_dev_config, uint8_t * p_buf)
 	// Getting physical buttons states
 	MaxtrixButtonsGet(p_buf, p_dev_config, &pos);
 	ShiftRegistersGet(p_buf, p_dev_config, &pos);
+	GpioExp_Get(p_buf, p_dev_config, &pos);			// GPIO-expander buttons (MCP23017/MCP23S17; cached, folded here)
 	a2b_first = pos;
 	AxisToButtonsGet(p_buf, p_dev_config, &pos);
 	a2b_last = pos;

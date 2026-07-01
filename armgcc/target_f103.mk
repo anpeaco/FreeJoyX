@@ -63,6 +63,7 @@ TARGET_APP_C_SOURCES = \
 ../application/Src/mlx90393.c \
 ../application/Src/mcp320x.c \
 ../application/Src/shift_registers.c \
+../application/Src/gpio_expander.c \
 ../application/Src/stm32f10x_it.c \
 ../application/Src/usb_desc.c \
 ../application/Src/usb_endp.c \
