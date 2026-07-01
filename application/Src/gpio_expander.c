@@ -36,9 +36,13 @@ static uint8_t exp_data[MAX_GPIO_EXPANDER_NUM][2];	/* latest GPIOA/GPIOB per slo
 static uint8_t exp_present[MAX_GPIO_EXPANDER_NUM];	/* slot is responding / wired */
 static int8_t  exp_cs[MAX_GPIO_EXPANDER_NUM];		/* SPI CS pin index, -1 for I2C/unused */
 
-/* See gpio_expander.h: the tick-ISR sensor kickoff and Sensor_OnSpi*Complete
- * skip while this is set, so the expander owns the bus during its transfer. */
+/* See gpio_expander.h. gpio_exp_bus_busy: the tick-ISR sensor kickoff skips
+ * while set, so GpioExp_Process holds the shared bus for its whole scan.
+ * gpio_exp_spi_active: set ONLY around the expander's own SPI DMA transfer;
+ * Sensor_OnSpi*Complete skips on this one, so a real sensor completion arriving
+ * before the expander actually takes the bus is serviced, not dropped. */
 volatile uint8_t gpio_exp_bus_busy = 0;
+volatile uint8_t gpio_exp_spi_active = 0;
 
 static uint8_t slot_is_i2c (const dev_config_t * c, uint8_t i)
 {
@@ -70,12 +74,18 @@ static uint8_t BusIdle (void)
 static void spi_xfer4 (int8_t cs, const uint8_t tx[4], uint8_t rx[4])
 {
 	uint8_t txb[4]; for (uint8_t k = 0; k < 4; k++) txb[k] = tx[k];
+	/* Mark our transfer active across the DMA start + completion IRQ so
+	 * Sensor_OnSpi{Rx,Tx}Complete no-op ours. Callers only reach here with the
+	 * bus idle (GpioExp_Process after BusIdle(), or GpioExp_Init pre-sensors),
+	 * so no genuine sensor completion can occur inside this window. */
+	gpio_exp_spi_active = 1;
 	pin_config[cs].port->ODR &= ~pin_config[cs].pin;			/* CS low */
 	SPI_FullDuplex_TransmitReceive(txb, rx, 4, GPIO_EXP_SPI_MODE);
 	uint32_t guard = 0;
 	while (SPI_RxBytesRemaining() > 0 && ++guard < GPIO_EXP_SPI_POLL) { }
 	SPI_AbortTransfer();
 	pin_config[cs].port->ODR |= pin_config[cs].pin;				/* CS high */
+	gpio_exp_spi_active = 0;
 }
 static void spi_write_reg (int8_t cs, uint8_t hw, uint8_t reg, uint8_t a, uint8_t b)
 {
@@ -153,8 +163,10 @@ void GpioExp_Process (dev_config_t * p_dev_config)
 	 * the tick ISR: set busy -> if a sensor is already mid-transfer (BusIdle
 	 * false) back off and let it finish; otherwise we hold the claim and the
 	 * tick-ISR kickoff (which reads gpio_exp_bus_busy) won't start a sensor
-	 * until we clear it. The narrow "ISR fired between set and check" case is
-	 * safe: the ISR sees busy and skips, BusIdle still reads idle, we proceed. */
+	 * until we clear it. A sensor completion IRQ landing in the set->check gap
+	 * is NOT dropped: Sensor_OnSpi*Complete gate on gpio_exp_spi_active (set only
+	 * around our actual transfer below), so such a completion is serviced, and
+	 * BusIdle() then observes the still-busy sensor and backs off this tick. */
 	gpio_exp_bus_busy = 1;
 	if (!BusIdle()) { gpio_exp_bus_busy = 0; return; }	/* a sensor owns the bus this tick */
 

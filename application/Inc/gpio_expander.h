@@ -56,10 +56,19 @@ void GpioExp_FoldBits (uint16_t gpio, uint8_t button_cnt,
  * sensors, but its blocking read runs in the main loop while the sensor DMA is
  * armed from Board_TickISR -- so BusIdle() alone isn't atomic against a tick
  * preempting between the gate and the transfer. The tick-ISR sensor kickoff and
- * the shared DMA-completion dispatch (Sensor_OnSpi{Rx,Tx}Complete) both honour
- * this flag: while it is set, no sensor transfer is started or re-armed, so the
- * expander owns the bus uncontended. Single-byte volatile -> atomic on Cortex-M;
- * written only by the main loop, read by the ISR. */
+ * the tick-ISR sensor kickoff (usb_app.c) honours this flag: while it is set, no
+ * sensor transfer is started, so GpioExp_Process holds the bus for its scan.
+ * Single-byte volatile -> atomic on Cortex-M; written only by the main loop,
+ * read by the ISR. */
 extern volatile uint8_t gpio_exp_bus_busy;
+
+/* Set ONLY for the duration of the expander's own SPI DMA transfer (spi_xfer4).
+ * The shared SPI DMA-completion dispatch (Sensor_OnSpi{Rx,Tx}Complete) skips on
+ * THIS flag -- not gpio_exp_bus_busy -- so a genuine sensor completion that
+ * lands in the gap between claiming the bus (gpio_exp_bus_busy = 1) and the
+ * BusIdle back-off check is still serviced, not dropped. It is only ever set
+ * once BusIdle() has confirmed no sensor is in flight, so when set the sole
+ * possible completion is the expander's own -> safe to no-op. */
+extern volatile uint8_t gpio_exp_spi_active;
 
 #endif	/* __GPIO_EXPANDER_H__ */
