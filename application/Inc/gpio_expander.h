@@ -32,6 +32,12 @@
 /* flags bits in gpio_expander_t.flags */
 #define GPIO_EXP_FLAG_PULLUPS		0x01	/* enable internal pull-ups (GPPU) */
 #define GPIO_EXP_FLAG_INVERT		0x02	/* invert input polarity (IPOL) */
+/* SPI (MCP23S17) only: flags bits 4:2 hold the CS index -- which SPI_GPIO_CS pin
+ * (in pin order) this chip is wired to. Chips sharing an index share that CS
+ * line and are told apart by their `address` DIP strap (HAEN honours it);
+ * distinct indices = one chip per CS. Ignored for I2C. Bits 7:5 stay free. */
+#define GPIO_EXP_CS_SHIFT			2
+#define GPIO_EXP_CS_MASK			0x1C	/* bits 4:2 */
 
 /* One-shot register setup for every enabled expander (IODIR/GPPU/IPOL, plus the
  * CS-pin match for SPI chips). Call once at config-apply, before sensor DMA. */

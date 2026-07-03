@@ -114,7 +114,6 @@ void GpioExp_Init (dev_config_t * p_dev_config)
 		else if (p_dev_config->pins[p] == SPI_SCK || p_dev_config->pins[p] == SPI_MOSI) spi_bus_up = 1;
 	}
 
-	uint8_t next_cs = 0;
 	for (uint8_t i = 0; i < MAX_GPIO_EXPANDER_NUM; i++)
 	{
 		exp_data[i][0] = 0; exp_data[i][1] = 0;
@@ -139,15 +138,23 @@ void GpioExp_Init (dev_config_t * p_dev_config)
 			I2C_WriteBlocking(addr, MCP_IPOLA, ipol_ab, 2);
 			exp_present[i] = 1;
 		}
-		else if (slot_is_spi(p_dev_config, i) && spi_bus_up && next_cs < cs_idx)
+		else if (slot_is_spi(p_dev_config, i) && spi_bus_up)
 		{
-			const int8_t  cs = cs_pins[next_cs++];
+			/* Resolve this chip's CS from its stored index (flags bits 4:2) into
+			 * the assigned SPI_GPIO_CS pins. Chips sharing an index share a CS
+			 * line; their `address` DIP straps (0..7) tell them apart, honoured
+			 * because HAEN is set below. Skip a chip whose index names a CS pin
+			 * that isn't assigned. */
+			const uint8_t cs_index = (flags & GPIO_EXP_CS_MASK) >> GPIO_EXP_CS_SHIFT;
+			if (cs_index >= cs_idx) continue;
+			const int8_t  cs = cs_pins[cs_index];
 			const uint8_t hw = p_dev_config->gpio_expanders[i].address & 0x07;
 			exp_cs[i] = cs;
-			/* One MCP23S17 per CS line (the MVP: the configurator assigns one CS
-			 * pin per SPI slot and writes address 0, so hw == 0). HAEN is set
-			 * defensively so the strap is honoured if a future build exposes a
-			 * per-chip hardware address for sharing one CS across chips. */
+			/* HAEN honours the A2:A0 straps so multiple chips can share this CS.
+			 * The first HAEN write on a shared CS reaches every chip on it (all
+			 * still HAEN=0 at power-on, so they ignore the address bits) and
+			 * enables HAEN on all at once -- harmless; each is then addressable
+			 * at its strap for the per-chip register writes below. */
 			spi_write_reg(cs, hw, MCP_IOCON, MCP_IOCON_HAEN, MCP_IOCON_HAEN);
 			spi_write_reg(cs, hw, MCP_IODIRA, 0xFF, 0xFF);
 			spi_write_reg(cs, hw, MCP_GPPUA, pull, pull);
