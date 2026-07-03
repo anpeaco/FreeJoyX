@@ -37,10 +37,15 @@
 #include "buttons.h"
 #include "encoders.h"
 
-sensor_t sensors[MAX_AXIS_NUM];	
+sensor_t sensors[MAX_AXIS_NUM];
 uint16_t adc_data[MAX_AXIS_NUM];
-uint16_t tmp_adc_data[MAX_AXIS_NUM];
-uint8_t adc_conv_num[MAX_AXIS_NUM];
+
+/* Free-running circular DMA ring. Both boards fill this identically, scan-major:
+ * [scan0 rank0..rankN-1][scan1 rank0..] ... wrapping after ADC_CONV_NUM scans.
+ * AdcRingReadout() trims + means it into adc_data[]. Sized for the worst case
+ * (all axes analog). The ADC converts into this continuously in the background;
+ * no code busy-waits on it. */
+static uint16_t adc_ring[MAX_AXIS_NUM * ADC_CONV_NUM];
 
 analog_data_t scaled_axis_data[MAX_AXIS_NUM];
 analog_data_t raw_axis_data[MAX_AXIS_NUM];
@@ -663,6 +668,13 @@ void AxesInit (dev_config_t * p_dev_config)
 	{
 		
 #ifdef BOARD_F103_BLUEPILL
+		/* ADC clock: PCLK2 = 72 MHz. F1 datasheet max ADCCLK = 14 MHz, so /6 ->
+		 * 12 MHz is the fastest in-spec prescaler. The reset default /2 = 36 MHz
+		 * over-clocked the SAR by 2.6x -- the source of the F103 pot LSB jitter,
+		 * and an inherited upstream oversight (F411's equivalent /4 -> 24 MHz was
+		 * always set explicitly). See ADC_REWORK_PLAN.md. */
+		RCC_ADCCLKConfig(RCC_PCLK2_Div6);
+
 		/* ADC1 configuration ------------------------------------------------------*/
 		ADC_InitStructure.ADC_Mode = ADC_Mode_Independent;
 		ADC_InitStructure.ADC_ScanConvMode = ENABLE;
@@ -690,14 +702,16 @@ void AxesInit (dev_config_t * p_dev_config)
 		/* DMA1 channel1 configuration ----------------------------------------------*/
 		DMA_DeInit(DMA1_Channel1);
 		DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC1->DR;
-		DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t) &adc_data[0];
+		DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t) &adc_ring[0];
 		DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
-		DMA_InitStructure.DMA_BufferSize = adc_cnt;
+		DMA_InitStructure.DMA_BufferSize = adc_cnt * ADC_CONV_NUM;
 		DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
 		DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
 		DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
 		DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
-		DMA_InitStructure.DMA_Mode = DMA_Mode_Normal;
+		/* Circular: the ADC free-runs (scan + continuous) and DMA wraps the
+		 * ring after ADC_CONV_NUM scans, so acquisition never blocks the tick. */
+		DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
 		DMA_InitStructure.DMA_Priority = DMA_Priority_High;
 		DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
 		DMA_Init(DMA1_Channel1, &DMA_InitStructure);
@@ -714,6 +728,12 @@ void AxesInit (dev_config_t * p_dev_config)
 		ADC_StartCalibration(ADC1);
 		/* Check the end of ADC1 calibration */
 		while(ADC_GetCalibrationStatus(ADC1));
+
+		/* Arm the circular DMA and kick off the continuous scan once. From here
+		 * the ADC fills adc_ring in the background forever; ADC_Conversion only
+		 * reads it. */
+		DMA_Cmd(DMA1_Channel1, ENABLE);
+		ADC_SoftwareStartConvCmd(ADC1, ENABLE);
 #endif /* BOARD_F103_BLUEPILL */
 
 #ifdef BOARD_F411_BLACKPILL
@@ -775,13 +795,13 @@ void AxesInit (dev_config_t * p_dev_config)
 		ADC1->SMPR1 = 0;
 		ADC1->SMPR2 = smpr2;
 
-		/* DMA mode + DDS so the ADC keeps requesting after the last
-		 * regular conversion. ADC_Conversion re-arms the stream each
-		 * pass; DDS prevents OVR latching across passes. */
-		ADC1->CR2 |= ADC_CR2_DMA | ADC_CR2_DDS;
+		/* Continuous scan + DMA + DDS: the ADC re-runs the regular sequence
+		 * back-to-back forever and keeps issuing DMA requests (DDS) so the
+		 * circular stream below never has to be re-armed. Free-running, so
+		 * nothing busy-waits in the tick ISR. */
+		ADC1->CR2 |= ADC_CR2_DMA | ADC_CR2_DDS | ADC_CR2_CONT;
 
-		/* DMA2 Stream 4 Channel 0 base config; M0AR + NDTR set per
-		 * conversion in ADC_Conversion. */
+		/* DMA2 Stream 4 Channel 0, circular into adc_ring -- armed once. */
 		DMA2_Stream4->CR = 0;
 		while (DMA2_Stream4->CR & DMA_SxCR_EN);
 		DMA2_Stream4->PAR = (uint32_t)&ADC1->DR;
@@ -795,12 +815,55 @@ void AxesInit (dev_config_t * p_dev_config)
 			DMA_SxCR_MSIZE_0 |	/* MSIZE = halfword */
 			DMA_SxCR_PSIZE_0 |	/* PSIZE = halfword */
 			DMA_SxCR_MINC    |	/* memory pointer increments */
+			DMA_SxCR_CIRC    |	/* circular: free-running ring, no re-arm */
 			DMA_SxCR_PL_1;		/* priority = high (PL = 10) */
+		DMA2_Stream4->M0AR = (uint32_t)&adc_ring[0];
+		DMA2_Stream4->NDTR = (uint32_t)adc_cnt * ADC_CONV_NUM;
+		DMA2_Stream4->CR  |= DMA_SxCR_EN;
 
-		/* Power up ADC1. F4 doesn't need the F1-style ResetCalibration /
-		 * StartCalibration -- factory-trimmed at silicon. */
+		/* Power up ADC1 and start the continuous regular sequence once. F4
+		 * doesn't need the F1-style ResetCalibration / StartCalibration --
+		 * factory-trimmed at silicon. CONT + circular DMA keep it free-running
+		 * into adc_ring from here on. */
 		ADC1->CR2 |= ADC_CR2_ADON;
+		ADC1->CR2 |= ADC_CR2_SWSTART;
 #endif /* BOARD_F411_BLACKPILL */
+	}
+}
+
+/**
+  * @brief  Reduce the free-running ADC ring to per-axis values in adc_data[].
+  *
+  * Per rank: take its ADC_CONV_NUM samples from the ring, sort, drop the single
+  * lowest and highest (impulse-spike / median-flavoured rejection), and mean the
+  * rest. Preserves the ~8x smoothing the downstream FIR (Filter) and dynamic
+  * deadband were tuned against while rejecting outliers a linear filter can't.
+  * Reads only RAM the DMA is filling in the background -- non-blocking (~us),
+  * so it is safe to call from the tick ISR without stalling USB or the tick.
+  * @retval None
+  */
+static void AdcRingReadout (void)
+{
+	if (adc_cnt == 0) return;
+
+	for (uint8_t k = 0; k < adc_cnt; k++)
+	{
+		uint16_t s[ADC_CONV_NUM];
+		for (uint8_t i = 0; i < ADC_CONV_NUM; i++)
+			s[i] = adc_ring[(uint16_t)i * adc_cnt + k];
+
+		/* insertion sort -- ADC_CONV_NUM is small */
+		for (uint8_t i = 1; i < ADC_CONV_NUM; i++)
+		{
+			uint16_t v = s[i];
+			int8_t j = (int8_t)i - 1;
+			while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; }
+			s[j + 1] = v;
+		}
+
+		uint32_t sum = 0;
+		for (uint8_t i = 1; i < ADC_CONV_NUM - 1; i++) sum += s[i];	/* drop min & max */
+		adc_data[k] = (uint16_t)(sum / (ADC_CONV_NUM - 2));
 	}
 }
 
@@ -810,81 +873,10 @@ void AxesInit (dev_config_t * p_dev_config)
   */
 void ADC_Conversion (void)
 {
-#ifdef BOARD_F103_BLUEPILL
-	if (adc_cnt > 0)
-	{
-		// clear buffer from old values
-		for (uint8_t j=0; j<MAX_AXIS_NUM; j++)
-		{
-			adc_data[j] = 0;
-		}
-		// perform multiple conversions
-		for (uint8_t i=0; i<ADC_CONV_NUM; i++)
-		{
-			DMA1_Channel1->CMAR = (uint32_t) &tmp_adc_data[0];
-			DMA_SetCurrDataCounter(DMA1_Channel1, adc_cnt);
-			DMA_Cmd(DMA1_Channel1, ENABLE);
-			ADC_Cmd(ADC1, ENABLE);
-			/* Start ADC1 Software Conversion */
-			ADC_SoftwareStartConvCmd(ADC1, ENABLE);
-
-			while (!DMA_GetFlagStatus(DMA1_FLAG_TC1));
-			DMA_ClearFlag(DMA1_FLAG_TC1);
-
-			ADC_Cmd(ADC1, DISABLE);
-			DMA_Cmd(DMA1_Channel1, DISABLE);
-
-			for (uint8_t j=0; j<MAX_AXIS_NUM; j++)
-			{
-				adc_data[j] += tmp_adc_data[j];
-			}
-		}
-		// get mean value
-		for (uint8_t j=0; j<MAX_AXIS_NUM; j++)
-		{
-			adc_data[j] /= ADC_CONV_NUM;
-		}
-	}
-#elif defined(BOARD_F411_BLACKPILL)
-	/* F411 ADC averaging loop -- mirrors F103's ADC_CONV_NUM-pass mean.
-	 * Each pass: arm DMA2 Stream 4 with NDTR = adc_cnt at tmp_adc_data,
-	 * fire SWSTART, wait for stream TC, sum into adc_data[]. After
-	 * ADC_CONV_NUM passes, divide. */
-	if (adc_cnt > 0)
-	{
-		for (uint8_t j = 0; j < MAX_AXIS_NUM; ++j) adc_data[j] = 0;
-
-		for (uint8_t i = 0; i < ADC_CONV_NUM; ++i) {
-			DMA2_Stream4->CR &= ~DMA_SxCR_EN;
-			while (DMA2_Stream4->CR & DMA_SxCR_EN);
-			/* Clear all stream-4 flags before re-arming. Stream 4 lives
-			 * in HISR/HIFCR (streams 4..7 are in the High registers). */
-			DMA2->HIFCR = DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 |
-			              DMA_HIFCR_CTEIF4 | DMA_HIFCR_CDMEIF4 |
-			              DMA_HIFCR_CFEIF4;
-			DMA2_Stream4->M0AR = (uint32_t)&tmp_adc_data[0];
-			DMA2_Stream4->NDTR = adc_cnt;
-			DMA2_Stream4->CR  |= DMA_SxCR_EN;
-
-			/* Software-start the regular sequence. */
-			ADC1->SR = 0;
-			ADC1->CR2 |= ADC_CR2_SWSTART;
-
-			/* Wait for stream-4 transfer-complete. */
-			while (!(DMA2->HISR & DMA_HISR_TCIF4));
-			DMA2->HIFCR = DMA_HIFCR_CTCIF4;
-
-			DMA2_Stream4->CR &= ~DMA_SxCR_EN;
-
-			for (uint8_t j = 0; j < MAX_AXIS_NUM; ++j) {
-				adc_data[j] += tmp_adc_data[j];
-			}
-		}
-		for (uint8_t j = 0; j < MAX_AXIS_NUM; ++j) {
-			adc_data[j] /= ADC_CONV_NUM;
-		}
-	}
-#endif
+	/* The ADC free-runs into adc_ring via circular DMA (armed once in
+	 * AxesInit) on both boards. This just reduces the ring to per-axis
+	 * values -- no busy-wait, no per-pass DMA re-arm. */
+	AdcRingReadout();
 }
 
 /**
