@@ -34,65 +34,61 @@ shift_reg_t shift_registers[4];
 	* @param  p_dev_config: Pointer to device configuration
   * @retval None
   */
+/* Resolve one shift-register pin from its per-slot selection nibble:
+ *   sel == 0  -> Auto: the i-th pin of this role (positional -- legacy behaviour)
+ *   sel != 0  -> explicit: the (sel-1)-th pin of this role
+ * Returns -1 when the requested pin doesn't exist. */
+static int8_t SR_ResolvePin(uint8_t sel, int i, const int8_t *list, int n)
+{
+	const int idx = (sel == 0) ? i : (int)sel - 1;
+	return (idx >= 0 && idx < n) ? list[idx] : -1;
+}
+
 void ShiftRegistersInit(dev_config_t * p_dev_config)
 {
-	uint8_t pos = 0;
-	int8_t prev_data = -1;
-	int8_t prev_latch = -1;
-	int8_t prev_clk = -1;
+	/* Ordered role-pin lists (pin index, in pin order) -- the same scan the old
+	 * positional passes did, but kept as lists so a per-SR selection can pick any
+	 * of them rather than being locked to slot order. */
+	int8_t data_list[MAX_SHIFT_REG_NUM], latch_list[MAX_SHIFT_REG_NUM], clk_list[MAX_SHIFT_REG_NUM];
+	int    n_data = 0, n_latch = 0, n_clk = 0;
+	for (int i = 0; i < USED_PINS_NUM; i++)
+	{
+		const uint8_t role = p_dev_config->pins[i];
+		if      (role == SHIFT_REG_DATA  && n_data  < MAX_SHIFT_REG_NUM) data_list[n_data++]   = (int8_t)i;
+		else if (role == SHIFT_REG_LATCH && n_latch < MAX_SHIFT_REG_NUM) latch_list[n_latch++] = (int8_t)i;
+		else if (role == SHIFT_REG_CLK   && n_clk   < MAX_SHIFT_REG_NUM) clk_list[n_clk++]     = (int8_t)i;
+	}
 
-	for (int i=0; i<MAX_SHIFT_REG_NUM; i++)
+	for (int i = 0; i < MAX_SHIFT_REG_NUM; i++)
 	{
-		shift_registers[i].pin_clk = -1;
-		shift_registers[i].pin_data = -1;
-		shift_registers[i].pin_latch = -1;
 		shift_registers[i].button_cnt = p_dev_config->shift_registers[i].button_cnt;
-		shift_registers[i].type = p_dev_config->shift_registers[i].type;
+		shift_registers[i].type       = p_dev_config->shift_registers[i].type;
+
+		/* Explicit per-pin selection packed in the config reserved bytes:
+		 *   reserved[0] lo nibble = data, hi nibble = latch; reserved[1] lo = clk.
+		 *   0 = Auto (positional), N = the (N-1)-th role pin. Kept in step with the
+		 *   configurator by hand (reserved bytes aren't a header-synced field). */
+		const int8_t *res = p_dev_config->shift_registers[i].reserved;
+		const uint8_t sel_data  =  (uint8_t)res[0]       & 0x0F;
+		const uint8_t sel_latch = ((uint8_t)res[0] >> 4) & 0x0F;
+		const uint8_t sel_clk   =  (uint8_t)res[1]       & 0x0F;
+
+		shift_registers[i].pin_data  = SR_ResolvePin(sel_data,  i, data_list,  n_data);
+		shift_registers[i].pin_latch = SR_ResolvePin(sel_latch, i, latch_list, n_latch);
+		shift_registers[i].pin_clk   = SR_ResolvePin(sel_clk,   i, clk_list,   n_clk);
 	}
-	
-	// set data pins
-	for (int i=0; i<USED_PINS_NUM; i++)
+
+	/* Share-last-latch/clk fallback: a chain that has a data pin but no latch/clk
+	 * resolved (the common shared-bus daisy-chain, or an out-of-range explicit
+	 * pick) inherits the last defined latch/clk. Preserves legacy behaviour. */
+	const int8_t last_latch = n_latch ? latch_list[n_latch - 1] : -1;
+	const int8_t last_clk   = n_clk   ? clk_list[n_clk - 1]     : -1;
+	for (int i = 0; i < MAX_SHIFT_REG_NUM; i++)
 	{
-		if (p_dev_config->pins[i] == SHIFT_REG_DATA && i > prev_data)
-		{
-			shift_registers[pos].pin_data = i;				
-			prev_data = i;
-			pos++;			
-		}
-	}
-	// set latch pins
-	pos = 0;
-	for (int i=0; i<USED_PINS_NUM; i++)
-	{
-		if (p_dev_config->pins[i] == SHIFT_REG_LATCH && i > prev_latch)
-		{
-			shift_registers[pos].pin_latch = i;					
-			prev_latch = i;
-			pos++;			
-		}
-	}
-	// set clk pins
-	pos = 0;
-	for (int i=0; i<USED_PINS_NUM; i++)
-	{
-		if (p_dev_config->pins[i] == SHIFT_REG_CLK && i > prev_clk)
-		{
-			shift_registers[pos].pin_clk = i;					
-			prev_clk = i;
-			pos++;			
-		}
-	}
-	// if latch or clk pin not set and data pin is set than set last defined latch pin
-	for (int i=0; i<MAX_SHIFT_REG_NUM; i++)
-	{
-		if (shift_registers[i].pin_data >= 0 && shift_registers[i].pin_latch == -1)
-		{
-			shift_registers[i].pin_latch = prev_latch;
-		}
-		if (shift_registers[i].pin_data >= 0 && shift_registers[i].pin_latch >= 0 &&  shift_registers[i].pin_clk == -1)
-		{
-			shift_registers[i].pin_clk = prev_clk;
-		}
+		if (shift_registers[i].pin_data >= 0 && shift_registers[i].pin_latch < 0)
+			shift_registers[i].pin_latch = last_latch;
+		if (shift_registers[i].pin_data >= 0 && shift_registers[i].pin_latch >= 0 && shift_registers[i].pin_clk < 0)
+			shift_registers[i].pin_clk = last_clk;
 	}
 }
 

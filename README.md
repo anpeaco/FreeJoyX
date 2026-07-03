@@ -56,8 +56,8 @@ FreeJoyX supports the following external periphery:
 - 4 hat povs
 - **2 hardware-quadrature (fast) encoders** — Enc 1 on TIM1 (PA8/PA9), Enc 2 on TIM4 (PB6/PB7), opt-in
 - 16 software incremental encoders
-- shift registers 74HC165 and CD4021
-- GPIO button expanders — **MCP23017** (I2C, addresses 0x20–0x27) and **MCP23S17** (SPI, one CS pin per chip); up to 8 chips total in any mix on the shared bus, 16 buttons each
+- shift registers 74HC165 and CD4021 — each register's data/latch/clk pin is selectable per register (defaults to the positional/pin-order mapping), so a multi-chain build can pick which physical pin drives which register
+- GPIO button expanders — **MCP23017** (I2C, addresses 0x20–0x27) and **MCP23S17** (SPI); up to 8 chips total in any mix on the shared bus, 16 buttons each. Several MCP23S17 chips can **share one CS pin**, distinguished by their A2:A0 hardware address strap (0–7)
 - digital sensors TLE5010/5011, TLE5012B, AS5048A, AS5600, MLX90393 (SPI interface only)
 - external ADCs ADS1115 and MCP3201/02/04/08
 - 4 PWM channels for lighting
