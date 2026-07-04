@@ -21,7 +21,7 @@ FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a w
 | `f103` (BluePill) | STM32F103C8T6 | StdPeriph | USB-FS-Device |
 | `f411` (WeAct BlackPill V3.x) | STM32F411CEU6 | STM32 LL (+ HAL flash driver) | ST USB Device Library |
 
-Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes (with the configurator's cross-board converter to bridge the gap). Wire format generation is currently `FIRMWARE_VERSION 0x0020` (released as **v0.1.x**); the prior `0x0010` generation and the upstream `0x17XX` lineage are still readable and forward-migratable by the configurator.
+Both targets share the same `dev_config_t` wire format; the configurator dispatches per-board pin tables based on a `board_id` byte added in firmware v1.7.7 and rejects cross-board configuration writes (with the configurator's cross-board converter to bridge the gap). Wire format generation is currently `FIRMWARE_VERSION 0x0040` (explicit slow-encoder pin pairing); the prior `0x0030` (MCP23017/MCP23S17 GPIO expanders), `0x0020`, `0x0010` generations and the upstream `0x17XX` lineage are still readable and forward-migratable by the configurator.
 
 On F411, `I2C2_SDA` defaults to **PB9 (AF9)** so it sits disjoint from SPI1 (PB3/4/5, AF5) — a single build can run I2C and SPI sensors together. PB3 stays a legal alternative SDA routing (mutex with SPI1_SCK); the firmware picks whichever slot the configurator writes the role to. The pre-PR-#52 wire layout that placed SDA on slot 22 (PB2 on F411, no I2C cap) is not supported — flashing this firmware with such a config silently fails to bring up I2C; update the configurator and re-save the config to wire SDA on PB9. F103 SDA stays on PB11 / AF4 — unchanged.
 
@@ -55,7 +55,7 @@ FreeJoyX supports the following external periphery:
 - 8 shift modifiers (bumped from 5 in v1.7.8)
 - 4 hat povs
 - **2 hardware-quadrature (fast) encoders** — Enc 1 on TIM1 (PA8/PA9), Enc 2 on TIM4 (PB6/PB7), opt-in
-- 16 software incremental encoders
+- 14 software incremental encoders with **explicit pin pairing** — each encoder names its own Pin A / Pin B (from any two pins tagged `Encoder`) plus a per-encoder direction swap, instead of the old positional zip of `Encoder A`/`Encoder B` button slots (wire gen `0x0040`; upgraded configs keep their encoders via automatic pair synthesis)
 - shift registers 74HC165 and CD4021 — each register's data/latch/clk pin is selectable per register (defaults to the positional/pin-order mapping), so a multi-chain build can pick which physical pin drives which register
 - GPIO button expanders — **MCP23017** (I2C, addresses 0x20–0x27) and **MCP23S17** (SPI); up to 8 chips total in any mix on the shared bus, 16 buttons each. Several MCP23S17 chips can **share one CS pin**, distinguished by their A2:A0 hardware address strap (0–7)
 - digital sensors TLE5010/5011, TLE5012B, AS5048A, AS5600, MLX90393 (SPI interface only)
