@@ -24,6 +24,7 @@
 
 #include "encoders.h"
 #include "board_encoder.h"
+#include "buttons.h"		// raw_buttons_data, DirectButtonGet, a2b_last
 
 
 const int8_t enc_array_1 [16] =
@@ -68,6 +69,40 @@ static const fast_encoder_pins_t fast_encoder_pins[MAX_FAST_ENCODER_NUM] = {
 	{  8,  9 },	// Encoder 1: PA8/PA9 (TIM1 on F103/F411)
 	{ 17, 18 },	// Encoder 2: PB6/PB7 (TIM4 on F103/F411)
 };
+
+/* Read a slow-encoder input's CURRENT state. If the input is a direct-wired
+ * single button (a BUTTON_GND/VCC pin), read the GPIO live via DirectButtonGet
+ * so the encoder samples at the encoder-poll rate instead of waiting for the
+ * next full button scan -- this is what lets a fast spin not drop steps. For an
+ * input behind a matrix / shift register / GPIO expander / axis-to-buttons
+ * (which can't be single-pin read), fall back to the scan buffer.
+ *
+ * Single buttons occupy raw_buttons_data indices [a2b_last, ...) in scan order,
+ * so physical_num >= a2b_last identifies a direct button and (physical_num -
+ * a2b_last) is its position within the BUTTON_GND/VCC pins. a2b_last == 0 before
+ * the first scan -> fall back (safe). */
+static uint8_t EncoderInputRead(dev_config_t * p_dev_config, int8_t btn_slot)
+{
+	int16_t phys = p_dev_config->buttons[btn_slot].physical_num;
+	if (phys < 0 || phys >= MAX_BUTTONS_NUM) return 0;		// unmapped -> not pressed
+
+	if (a2b_last != 0 && phys >= a2b_last)
+	{
+		int16_t k = phys - a2b_last;			// k-th direct single button
+		int16_t count = 0;
+		for (int i = 0; i < USED_PINS_NUM; i++)
+		{
+			if (p_dev_config->pins[i] == BUTTON_GND ||
+					p_dev_config->pins[i] == BUTTON_VCC)
+			{
+				if (count == k) return DirectButtonGet((uint8_t)i, p_dev_config);
+				count++;
+			}
+		}
+	}
+	// Not a direct pin (or no scan yet) -- use the last full-scan value.
+	return raw_buttons_data[phys];
+}
 
 void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * p_dev_config)
 {	
@@ -137,8 +172,8 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 			int8_t stt;
 			encoders_state[i].state <<= 2;			// shift prev state to clear space for new data
 			
-			if (raw_buttons_data[p_dev_config->buttons[encoders_state[i].pin_a].physical_num])	encoders_state[i].state |= 0x01;		// Pin A high
-			if (raw_buttons_data[p_dev_config->buttons[encoders_state[i].pin_b].physical_num])	encoders_state[i].state |= 0x02;		// Pin B high
+			if (EncoderInputRead(p_dev_config, encoders_state[i].pin_a))	encoders_state[i].state |= 0x01;		// Pin A high (live for direct pins)
+			if (EncoderInputRead(p_dev_config, encoders_state[i].pin_b))	encoders_state[i].state |= 0x02;		// Pin B high (live for direct pins)
 			
 			if ((encoders_state[i].state & 0x03) != ((encoders_state[i].state >> 2) & 0x03))							// Current state != Prev state
 			{

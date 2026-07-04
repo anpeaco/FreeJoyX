@@ -19,6 +19,16 @@ extern logical_buttons_state_t 	logical_buttons_state[MAX_BUTTONS_NUM];
 extern uint8_t									phy_buttons_data[MAX_BUTTONS_NUM/8];
 extern uint8_t									log_buttons_data[MAX_BUTTONS_NUM/8];
 extern uint8_t									shifts_state;
+/* Physical-index boundary of the single (direct-GPIO) button block: single
+ * buttons occupy raw_buttons_data indices [a2b_last, ...). Set each scan by
+ * ButtonsReadPhysical. Lets encoders live-read a direct-wired pin instead of
+ * waiting for the next full scan (encoders.c EncoderProcess). */
+extern uint8_t									a2b_last;
+
+/* Live read of a single (direct) button's pressed state via Board_PinRead,
+ * with the BUTTON_VCC/GND polarity applied. Same value the full scan writes to
+ * raw_buttons_data, but fresh at call time. */
+uint8_t DirectButtonGet (uint8_t pin_num, dev_config_t * p_dev_config);
 
 typedef uint8_t button_data_t;
 typedef uint8_t pov_data_t;
