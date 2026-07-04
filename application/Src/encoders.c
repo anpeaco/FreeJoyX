@@ -158,9 +158,6 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 						break;
 				}
 
-				// Per-encoder direction swap: invert CW/CCW when the swap bit is set.
-				if (p_dev_config->encoders[i] & SLOW_ENC_SWAP)	stt = -stt;
-
 				if (stt != 0)		// changed
 				{
 						encoders_state[i].dir = stt > 0 ? 1 : -1;

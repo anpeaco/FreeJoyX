@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-#define FIRMWARE_VERSION					0x0040			// FreeJoyX wire-format generation 4: added slow_encoders[MAX_ENCODERS_NUM] ({int8 btn_a, int8 btn_b} explicit slow-encoder pin pairing) appended to the END of dev_config_t, replacing the old positional zip of ENCODER_INPUT_A/_B button slots (encoders.c scan-and-zip removed); per-encoder direction swap packed into encoders[i] bit 4 (SLOW_ENC_SWAP), detent mode masked with SLOW_ENC_MODE_MASK. Old shape is the byte-exact prefix, so 0x0030->0x0040 migration is prefix-copy + synthesise pairs via the old positional algorithm; offsetof(dev_config_t, slow_encoders) == the old size (1620). Crosses the &0xFFF0 mask -> factory reset on first flash. Enum values ENCODER_INPUT_A (219) and ENCODER_INPUT_B (220) are both retained (removing 220 would shift RADIO_BUTTON1..); firmware treats both as "encoder line". ENCODER_PAIRING_PLAN.md. --- Gen 3 note (0x0030): added gpio_expanders[MAX_GPIO_EXPANDER_NUM] (MCP23017 I2C + MCP23S17 SPI, 8 slots) appended; offsetof(dev_config_t, gpio_expanders) == old size 1580; forward migrators read 0x0020/0x0010/0x17xx via the same prefix path. MCP23017_PLAN.md. --- Gen 2 note (0x0020): dev_config_t SHAPE unchanged from 0x0010 -- the bump is for SEMANTIC drift: the enum value formerly named LONG_PRESS (hold-style, "fires after threshold") was renamed to TAP and reinterpreted as release-within-cutoff ("fires on release before window expires"). Same integer enum slot, same byte position in config, different gesture behaviour. Bumping the mask group forces factory reset on first flash so a user's existing buttons don't silently change behaviour mid-upgrade. The forward migrator chain covers 0x0010 (FreeJoyX v0.0.x, LONG_PRESS semantics) plus the upstream 0x1700/0x1710/0x1730/0x1770/0x1780 lineage.
+#define FIRMWARE_VERSION					0x0040			// FreeJoyX wire-format generation 4: added slow_encoders[MAX_ENCODERS_NUM] ({int8 btn_a, int8 btn_b} explicit slow-encoder pin pairing) appended to the END of dev_config_t, replacing the old positional zip of ENCODER_INPUT_A/_B button slots (encoders.c scan-and-zip removed); direction is set by the Pin A/Pin B order in slow_encoders[] (the configurator's Swap button exchanges the two pins -- no swap flag), detent mode in encoders[i] masked with SLOW_ENC_MODE_MASK. Old shape is the byte-exact prefix, so 0x0030->0x0040 migration is prefix-copy + synthesise pairs via the old positional algorithm; offsetof(dev_config_t, slow_encoders) == the old size (1620). Crosses the &0xFFF0 mask -> factory reset on first flash. Enum values ENCODER_INPUT_A (219) and ENCODER_INPUT_B (220) are both retained (removing 220 would shift RADIO_BUTTON1..); firmware treats both as "encoder line". ENCODER_PAIRING_PLAN.md. --- Gen 3 note (0x0030): added gpio_expanders[MAX_GPIO_EXPANDER_NUM] (MCP23017 I2C + MCP23S17 SPI, 8 slots) appended; offsetof(dev_config_t, gpio_expanders) == old size 1580; forward migrators read 0x0020/0x0010/0x17xx via the same prefix path. MCP23017_PLAN.md. --- Gen 2 note (0x0020): dev_config_t SHAPE unchanged from 0x0010 -- the bump is for SEMANTIC drift: the enum value formerly named LONG_PRESS (hold-style, "fires after threshold") was renamed to TAP and reinterpreted as release-within-cutoff ("fires on release before window expires"). Same integer enum slot, same byte position in config, different gesture behaviour. Bumping the mask group forces factory reset on first flash so a user's existing buttons don't silently change behaviour mid-upgrade. The forward migrator chain covers 0x0010 (FreeJoyX v0.0.x, LONG_PRESS semantics) plus the upstream 0x1700/0x1710/0x1730/0x1770/0x1780 lineage.
 
 /* FREEJOYX_VERSION is the user-facing project version (semver). It's
  * decoupled from FIRMWARE_VERSION above -- FIRMWARE_VERSION is the
@@ -66,12 +66,13 @@
 #define MAX_POVS_NUM							4						// max 4
 #define MAX_ENCODERS_NUM					16					// max 64
 #define MAX_FAST_ENCODER_NUM			2						// hardware-quadrature encoders (Enc 1 = TIM1/PA8/PA9, Enc 2 = TIM4/PB6/PB7).
-/* Slow-encoder detent mode + flags packed into dev_config_t.encoders[i]:
- * bits 0-1 = mode (ENCODER_CONF_1x/2x/4x), bit 4 = direction swap. Fast slots
- * (0..MAX_FAST_ENCODER_NUM-1) use only the mode bits. Mirror of
+/* Slow-encoder detent mode in dev_config_t.encoders[i]: bits 0-1 = mode
+ * (ENCODER_CONF_1x/2x/4x); high bits reserved. Direction is set purely by the
+ * Pin A / Pin B order in slow_encoders[] (the configurator's Swap button
+ * exchanges the two pins), so no direction-swap flag is stored. The mask
+ * defends against a stray high bit from an interim build. Mirror of
  * FreeJoyXConfiguratorQt/src/common_defines.h. See ENCODER_PAIRING_PLAN.md. */
 #define SLOW_ENC_MODE_MASK				0x03
-#define SLOW_ENC_SWAP					0x10
 #define MAX_SHIFT_REG_NUM					4						// max 4
 #define MAX_GPIO_EXPANDER_NUM				8						// GPIO expanders (MCP23017 I2C / MCP23S17 SPI), any mix, up to 16 buttons each -- MCP23017_PLAN.md
 #define MAX_LEDS_NUM							24

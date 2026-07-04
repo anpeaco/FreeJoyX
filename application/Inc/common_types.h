@@ -391,8 +391,9 @@ typedef struct
 // Per-slow-encoder explicit pin pairing (wire gen 0x0040). Replaces the old
 // positional zip of ENCODER_INPUT_A/_B button slots -- pairing is now stored,
 // not re-derived from button-slot order. btn_a/btn_b are button-slot indices
-// (same space as encoder_state_t.pin_a/pin_b); -1 = unused. Detent mode and
-// direction swap live in encoders[] (SLOW_ENC_MODE_MASK / SLOW_ENC_SWAP).
+// (same space as encoder_state_t.pin_a/pin_b); -1 = unused. Detent mode lives
+// in encoders[] (SLOW_ENC_MODE_MASK). Direction is set by btn_a/btn_b order --
+// swapping them reverses it -- so there is no separate swap flag.
 // See ENCODER_PAIRING_PLAN.md.
 typedef struct
 {
