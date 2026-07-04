@@ -112,14 +112,18 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 	
 	for (int k = 0; k < MAX_ENCODERS_NUM; k++)
 	{
+		// Unwired slots hold pin_a/pin_b == -1; guard before indexing buttons[]
+		// so we don't read buttons[-1] (out of bounds) for every empty slot.
 		// Pin A
-		if (p_dev_config->buttons[encoders_state[k].pin_a].shift_modificator > 0 && 
+		if (encoders_state[k].pin_a >= 0 &&
+			p_dev_config->buttons[encoders_state[k].pin_a].shift_modificator > 0 &&
 		 shifts_state & 1<<(p_dev_config->buttons[encoders_state[k].pin_a].shift_modificator-1))
 		{
 			ignore_a[tmp_a++] = p_dev_config->buttons[encoders_state[k].pin_a].physical_num;
 		}
 		// Pin B
-		if (p_dev_config->buttons[encoders_state[k].pin_b].shift_modificator > 0 && 
+		if (encoders_state[k].pin_b >= 0 &&
+			p_dev_config->buttons[encoders_state[k].pin_b].shift_modificator > 0 &&
 		 shifts_state & 1<<(p_dev_config->buttons[encoders_state[k].pin_b].shift_modificator-1))
 		{
 			ignore_b[tmp_b++] = p_dev_config->buttons[encoders_state[k].pin_b].physical_num;
