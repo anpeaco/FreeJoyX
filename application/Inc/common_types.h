@@ -388,6 +388,18 @@ typedef struct
 	encoder_t mode;			// ENCODER_CONF_1x / _2x / _4x
 } fast_encoder_t;
 
+// Per-slow-encoder explicit pin pairing (wire gen 0x0040). Replaces the old
+// positional zip of ENCODER_INPUT_A/_B button slots -- pairing is now stored,
+// not re-derived from button-slot order. btn_a/btn_b are button-slot indices
+// (same space as encoder_state_t.pin_a/pin_b); -1 = unused. Detent mode and
+// direction swap live in encoders[] (SLOW_ENC_MODE_MASK / SLOW_ENC_SWAP).
+// See ENCODER_PAIRING_PLAN.md.
+typedef struct
+{
+	int8_t  btn_a;			// button-slot index of the A line, -1 = unused
+	int8_t  btn_b;			// button-slot index of the B line, -1 = unused
+} slow_encoder_t;
+
 
 typedef struct
 {
@@ -639,6 +651,14 @@ typedef struct
 	// very end. Configurator-only metadata; firmware ignores it. Zero on
 	// factory-reset / pre-0x0030 configs.
 	uint8_t					saved_per_exp[MAX_GPIO_EXPANDER_NUM];
+
+	// config 18 -- explicit slow-encoder pin pairing (wire gen 0x0040).
+	// Appended at the very end of dev_config_t so the 0x0030 -> 0x0040
+	// migration is a prefix-copy of the old bytes + synthesise-pairs:
+	// offsetof(dev_config_t, slow_encoders) equals the old config size (1620).
+	// Indices align with encoders[]/encoders_state[]; fast slots
+	// 0..MAX_FAST_ENCODER_NUM-1 are unused here. See ENCODER_PAIRING_PLAN.md.
+	slow_encoder_t			slow_encoders[MAX_ENCODERS_NUM];
 
 }dev_config_t;
 
