@@ -73,6 +73,11 @@
  * defends against a stray high bit from an interim build. Mirror of
  * FreeJoyXConfiguratorQt/src/common_defines.h. See ENCODER_PAIRING_PLAN.md. */
 #define SLOW_ENC_MODE_MASK				0x03
+/* Per-encoder "step queue" opt-in (bit 2 of encoders[i]). When set, each detent
+ * is emitted as a discrete, capped pulse train (N detents -> N clean presses)
+ * instead of a hold-while-spinning; makes fast increment tuning (e.g. a UFC
+ * radio knob) not merge steps. See ENCODER_PAIRING_PLAN.md. */
+#define SLOW_ENC_QUEUE					0x04
 #define MAX_SHIFT_REG_NUM					4						// max 4
 #define MAX_GPIO_EXPANDER_NUM				8						// GPIO expanders (MCP23017 I2C / MCP23S17 SPI), any mix, up to 16 buttons each -- MCP23017_PLAN.md
 #define MAX_LEDS_NUM							24

@@ -70,6 +70,18 @@ static const fast_encoder_pins_t fast_encoder_pins[MAX_FAST_ENCODER_NUM] = {
 	{ 17, 18 },	// Encoder 2: PB6/PB7 (TIM4 on F103/F411)
 };
 
+/* Per-encoder step-queue runtime state (SLOW_ENC_QUEUE mode). Firmware-local --
+ * not part of the wire format. Each detent enqueues one capped pulse; the
+ * playout in EncoderProcess plays them out as ON/OFF pulses so N fast detents
+ * become N discrete presses instead of one held button. */
+#define ENC_QUEUE_CAP 16		// max pending steps -> bounds the post-spin tail
+static uint8_t enc_pend_a[MAX_ENCODERS_NUM];		// pending CW pulses (fire pin_a)
+static uint8_t enc_pend_b[MAX_ENCODERS_NUM];		// pending CCW pulses (fire pin_b)
+static int32_t enc_prev_cnt[MAX_ENCODERS_NUM];		// last-seen encoders_state.cnt
+static int32_t enc_pulse_end[MAX_ENCODERS_NUM];		// millis the active pulse ends (0 = idle)
+static int32_t enc_gap_end[MAX_ENCODERS_NUM];		// millis the OFF gap ends
+static uint8_t enc_active[MAX_ENCODERS_NUM];		// 0 none, 1 pin_a pulsing, 2 pin_b pulsing
+
 /* Read a slow-encoder input's CURRENT state. If the input is a direct-wired
  * single button (a BUTTON_GND/VCC pin), read the GPIO live via DirectButtonGet
  * so the encoder samples at the encoder-poll rate instead of waiting for the
@@ -334,6 +346,43 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 		// unpress encoder button
 		if (encoders_state[i].pin_a >=0 && encoders_state[i].pin_b >=0)
 		{		
+			if (p_dev_config->encoders[i] & SLOW_ENC_QUEUE)
+			{
+				// QUEUE MODE: emit each detent as a discrete, capped pulse so a
+				// fast spin yields N clean presses instead of one held button.
+				// New detents this tick == the change in the running count.
+				int32_t delta = encoders_state[i].cnt - enc_prev_cnt[i];
+				while (delta > 0) { if (enc_pend_a[i] < ENC_QUEUE_CAP) enc_pend_a[i]++; delta--; }
+				while (delta < 0) { if (enc_pend_b[i] < ENC_QUEUE_CAP) enc_pend_b[i]++; delta++; }
+				enc_prev_cnt[i] = encoders_state[i].cnt;
+
+				uint16_t pulse = p_dev_config->encoder_press_time_ms;
+				if (pulse == 0) pulse = 1;
+
+				if (enc_pulse_end[i] != 0)
+				{
+					// mid-pulse: end it after its width, then start an OFF gap
+					if (millis >= enc_pulse_end[i])
+					{
+						enc_pulse_end[i] = 0;
+						enc_active[i] = 0;
+						enc_gap_end[i] = millis + pulse;	// gap == pulse width
+					}
+				}
+				else if (millis >= enc_gap_end[i])
+				{
+					// idle + gap elapsed: launch the next queued pulse
+					if (enc_pend_a[i] > 0)      { enc_pend_a[i]--; enc_active[i] = 1; enc_pulse_end[i] = millis + pulse; }
+					else if (enc_pend_b[i] > 0) { enc_pend_b[i]--; enc_active[i] = 2; enc_pulse_end[i] = millis + pulse; }
+				}
+
+				// Own the buttons: on only while their pulse is active (this also
+				// overrides the hold the detent block above may have applied).
+				button_state_buf[encoders_state[i].pin_a].current_state = (enc_active[i] == 1) ? 1 : 0;
+				button_state_buf[encoders_state[i].pin_b].current_state = (enc_active[i] == 2) ? 1 : 0;
+			}
+			else
+			{
 			uint16_t a_press_time;
 			uint16_t b_press_time;
 
@@ -376,8 +425,9 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 				button_state_buf[encoders_state[i].pin_a].current_state = 0;
 			}
 			if (millis - encoders_state[i].time_last > b_press_time)
-			{	
+			{
 				button_state_buf[encoders_state[i].pin_b].current_state = 0;
+			}
 			}
 		}
 	}
@@ -391,6 +441,13 @@ void EncodersInit(dev_config_t * p_dev_config)
 		encoders_state[i].pin_b = -1;
 		encoders_state[i].state = 0;
 		encoders_state[i].time_last = 0;
+		// step-queue runtime state
+		enc_pend_a[i] = 0;
+		enc_pend_b[i] = 0;
+		enc_prev_cnt[i] = 0;
+		enc_pulse_end[i] = 0;
+		enc_gap_end[i] = 0;
+		enc_active[i] = 0;
 	}
 
 	// Bring up each fast encoder whose enabled flag is set in dev_config.
