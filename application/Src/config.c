@@ -95,9 +95,6 @@ void DevConfigGet (dev_config_t * p_dev_config)
 
 void AppConfigInit (dev_config_t * p_dev_config)
 {
-	int8_t prev_a = -1;
-	int8_t prev_b = -1;
-	
 	app_config.axis = 0;
 	app_config.axis_cnt = 0;
 	app_config.buttons_cnt = 0;
@@ -180,19 +177,16 @@ void AppConfigInit (dev_config_t * p_dev_config)
 		app_config.uart_tx_used = 1;
 	}
 	
-	for (int i=0; i<MAX_BUTTONS_NUM; i++)
+	// Count wired slow encoders from the explicit pairs (wire gen 0x0040).
+	// Slow slots start after the fast-encoder slots; a pair is wired when both
+	// button-slot indices are >= 0.
+	for (int i = MAX_FAST_ENCODER_NUM; i < MAX_ENCODERS_NUM; i++)
 	{
-		if ((p_dev_config->buttons[i].type) == ENCODER_INPUT_A &&  i > prev_a)
+		if (p_dev_config->slow_encoders[i].btn_a >= 0 &&
+			p_dev_config->slow_encoders[i].btn_b >= 0)
 		{
-			for (int j=0; j<MAX_BUTTONS_NUM; j++)
-			{
-				if ((p_dev_config->buttons[j].type) == ENCODER_INPUT_B && j > prev_b && app_config.slow_encoder_cnt < MAX_ENCODERS_NUM - 1)
-				{
-					app_config.slow_encoder_cnt++;
-					break;
-				}
-			}
-		}	
+			app_config.slow_encoder_cnt++;
+		}
 	}
 	
 	for (uint8_t i=0; i<USED_PINS_NUM; i++)

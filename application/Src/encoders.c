@@ -138,22 +138,25 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 			
 			if ((encoders_state[i].state & 0x03) != ((encoders_state[i].state >> 2) & 0x03))							// Current state != Prev state
 			{
-				switch (p_dev_config->encoders[i])
+				switch (p_dev_config->encoders[i] & SLOW_ENC_MODE_MASK)		// mask off the swap flag (bit 4)
 				{
 					default:
 					case ENCODER_CONF_1x:
 						stt = enc_array_1[encoders_state[i].state & 0x0F];
 					break;
-					
+
 					case ENCODER_CONF_2x:
 						stt = enc_array_2[encoders_state[i].state & 0x0F];
 						break;
-					
+
 					case ENCODER_CONF_4x:
 						stt = enc_array_4[encoders_state[i].state & 0x0F];
 						break;
 				}
-				
+
+				// Per-encoder direction swap: invert CW/CCW when the swap bit is set.
+				if (p_dev_config->encoders[i] & SLOW_ENC_SWAP)	stt = -stt;
+
 				if (stt != 0)		// changed
 				{
 						encoders_state[i].dir = stt > 0 ? 1 : -1;
@@ -346,10 +349,6 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 
 void EncodersInit(dev_config_t * p_dev_config)
 {
-	uint8_t pos = MAX_FAST_ENCODER_NUM;		// polling encoders sit after the fast slots
-	int8_t prev_a = -1;
-	int8_t prev_b = -1;
-
 	for (int i=0; i<MAX_ENCODERS_NUM; i++)
 	{
 		encoders_state[i].pin_a = -1;
@@ -380,26 +379,22 @@ void EncodersInit(dev_config_t * p_dev_config)
 		}
 	}
 	
-	// check if slow encoders connected to buttons inputs
-	for (int i=0; i<MAX_BUTTONS_NUM; i++)
+	// Slow encoders now carry EXPLICIT pin pairs in dev_config.slow_encoders[]
+	// (wire gen 0x0040) -- no more positional zip of ENCODER_INPUT_A/_B button
+	// slots. Each entry holds button-slot indices {btn_a, btn_b}; -1 = unwired.
+	// Fast slots (0..MAX_FAST_ENCODER_NUM-1) are handled above and left as -1
+	// here. The configurator writes the pairs; the legacy migrator synthesises
+	// them from the old positional layout so upgraded boards keep their encoders.
+	for (int i = MAX_FAST_ENCODER_NUM; i < MAX_ENCODERS_NUM; i++)
 	{
-		if ((p_dev_config->buttons[i].type) == ENCODER_INPUT_A &&  i > prev_a)
+		int8_t a = p_dev_config->slow_encoders[i].btn_a;
+		int8_t b = p_dev_config->slow_encoders[i].btn_b;
+		if (a >= 0 && b >= 0)
 		{
-			for (int j=0; j<MAX_BUTTONS_NUM; j++)
-			{
-				if ((p_dev_config->buttons[j].type) == ENCODER_INPUT_B && j > prev_b && pos < MAX_ENCODERS_NUM)
-				{
-					encoders_state[pos].pin_a = i;
-					encoders_state[pos].pin_b = j;
-					encoders_state[pos].dir = 1;
-					encoders_state[pos].last_dir = 1;
-					
-					prev_a = i;
-					prev_b = j;
-					pos++;
-					break;
-				}
-			}
-		}	
+			encoders_state[i].pin_a = a;
+			encoders_state[i].pin_b = b;
+			encoders_state[i].dir = 1;
+			encoders_state[i].last_dir = 1;
+		}
 	}
 }
