@@ -21,13 +21,7 @@
   *       - F411 usbd_freejoy_if.c::FreeJoy_HID_OutEvent calls
   *         App_HidOutDispatch(report_buffer) directly.
   *
-  * Two BSP shims absorb the F1-specific bits that used to be inline:
-  *
-  *   - Board_AdcQuietPeripherals(quiet): F103 toggles RCC clock gates
-  *     to silence SPI1/I2C2/TIM3/TIM4 briefly across an ADC sample
-  *     window (reduces injected noise on ADC1's analog inputs). F411
-  *     no-ops -- different ADC noise considerations + the F411 ADC
-  *     runtime path isn't wired yet anyway.
+  * A BSP shim absorbs an F1-specific bit that used to be inline:
   *
   *   - Board_VersionMismatchBlink(): F103 blinks PB12/PC13 6x at ~3 Hz
   *     when a config write arrives with a stale firmware_version
@@ -283,6 +277,19 @@ void App_HidOutDispatch(const uint8_t *hid_buf)
 			break;
 
 		case REPORT_ID_CONFIG_OUT:
+			/* Reject only an out-of-range-HIGH fragment index. The host numbers
+			 * DATA fragments 1..cfg_count, but fragment 0 is the legitimate
+			 * write-INITIATION handshake: it carries no data and the device must
+			 * still reply "send fragment 1" below, so 0 MUST pass this guard.
+			 * An index > cfg_count is malformed/hostile and would otherwise
+			 * drive the memcpy destination up to ~14 KB past the 1620-byte
+			 * tmp_dev_config into adjacent .bss -- that's the OOB write this
+			 * guard prevents. The `> 0` check on the copy keeps fragment 0 from
+			 * memcpy'ing at a negative offset. */
+			if (hid_buf[1] > cfg_count) {
+				break;
+			}
+
 			if (hid_buf[1] == cfg_count && last_cfg_size > 0) {
 				memcpy((uint8_t *)&tmp_dev_config + 62 * (hid_buf[1] - 1),
 				       &hid_buf[2], last_cfg_size);
@@ -557,18 +564,19 @@ void Board_TickISR(void)
 		EncoderProcess(logical_buttons_state, &dev_config);
 	}
 
-	/* Internal ADC conversion. F103 silences neighbouring peripherals
-	 * across the ADC sample window via Board_AdcQuietPeripherals (RCC
-	 * clock-gate toggles for SPI1/I2C2/TIM3/TIM4). F411 no-ops the
-	 * shim until the F411 ADC runtime path lands. */
+	/* Internal ADC readout. The ADC free-runs into a circular DMA ring
+	 * (armed once in AxesInit) on both boards, so ADC_Conversion() only
+	 * reduces the ring to per-axis values -- it never busy-waits. That is
+	 * why the old Board_AdcQuietPeripherals() clock-gating around this call
+	 * is gone: there is no blocking sample window to protect, and continuous
+	 * acquisition can't be paired with it. Noise is now handled at the root
+	 * (in-spec ADC clock + spike-rejecting trimmed mean). See
+	 * ADC_REWORK_PLAN.md. */
 	if (Ticks - adc_ticks >= ADC_PERIOD_TICKS) {
 		adc_ticks = Ticks;
 
 		AxesProcess(&dev_config);
-
-		Board_AdcQuietPeripherals(1, &tmp_app_config);
 		ADC_Conversion();
-		Board_AdcQuietPeripherals(0, &tmp_app_config);
 	}
 
 	/* External sensor DMA kickoff. Note the +1 guard: avoids overlapping

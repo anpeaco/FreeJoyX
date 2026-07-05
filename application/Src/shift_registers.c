@@ -127,7 +127,14 @@ void ShiftRegisterRead(shift_reg_t * shift_register, uint8_t * data)
 		pin_config[shift_register->pin_latch].port->ODR |= pin_config[shift_register->pin_latch].pin;			
 	}
 	
-	reg_cnt = (uint8_t) ((float)shift_register->button_cnt/8.0);		// number of data bytes to read
+	/* Round up: a partially-populated final register still needs a full byte
+	 * read, else ShiftRegistersGet folds bits out of an uninitialised
+	 * input_data[] byte (buttons 8..N of a non-multiple-of-8 register read as
+	 * random stack noise). Truncating division ((float).../8.0 -> floor) was
+	 * the bug. Clamp to the caller's 16-byte (128-button) buffer so a corrupt
+	 * button_cnt can't walk this write loop past input_data[15]. */
+	reg_cnt = (shift_register->button_cnt + 7) / 8;		// number of data bytes to read
+	if (reg_cnt > 16) reg_cnt = 16;
 	for (uint8_t i=0; i<reg_cnt; i++)
 	{
 		uint8_t mask = 0x80;

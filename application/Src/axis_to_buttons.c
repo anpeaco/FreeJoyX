@@ -140,9 +140,18 @@ void AxisToButtonsGet (uint8_t * raw_button_data_buf, dev_config_t * p_dev_confi
 
 					if (raw_button_data_buf[*pos] == 1)
 					{
-						uint8_t size = p_dev_config->axes_to_buttons[i].buttons_cnt - j;
-						memset(&raw_button_data_buf[(*pos) +1], 0, size);
-						*pos += size;
+						/* Button j is pressed; zero the remaining buttons of this
+						 * group (j+1 .. buttons_cnt-1) and advance past the whole
+						 * group. Clamp the zero-fill to the array bound so a
+						 * nearly-full button map can't overrun
+						 * raw_button_data_buf[MAX_BUTTONS_NUM]. Previously the
+						 * fill length was buttons_cnt-j (one too many) and was
+						 * unbounded, writing past index 127 in the tick ISR. */
+						uint8_t remaining = p_dev_config->axes_to_buttons[i].buttons_cnt - j - 1;
+						if ((*pos) + 1 + remaining > MAX_BUTTONS_NUM)
+							remaining = MAX_BUTTONS_NUM - (*pos) - 1;
+						memset(&raw_button_data_buf[(*pos) +1], 0, remaining);
+						*pos += remaining + 1;
 						break;
 					}
 					(*pos)++;

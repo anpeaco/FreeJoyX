@@ -142,7 +142,14 @@ Older firmware that predates the split (anpeaco/FreeJoyX#27) sends `0xFE` for bo
 
 ## Release notes
 
-Full history on the [Releases](https://github.com/anpeaco/FreeJoyX/releases) page. No wire-format change since v0.1.2 — `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board.
+Full history on the [Releases](https://github.com/anpeaco/FreeJoyX/releases) page. The current wire-format generation is `FIRMWARE_VERSION 0x0030` (GPIO expanders). Upgrading a board from an older generation (`0x0020` and earlier) **factory-resets** it on first boot; the configurator reads the old config first and migrates it forward, so re-writing it after the flash restores your mapping.
+
+### Unreleased
+- **ADC acquisition rework (F103 + F411).** The ADC now free-runs into a circular DMA ring instead of busy-waiting in the tick ISR, and the F103 ADC clock is brought into spec (`RCC_PCLK2_Div6` → 12 MHz; was the reset default 36 MHz, 2.6× over the 14 MHz max — F411 keeps its in-spec `/4` → 24 MHz). Readout is a spike-rejecting trimmed mean that preserves the smoothing the axis filter/deadband were tuned against. Fixes the F411 USB-report jitter caused by the blocking conversion and stops encoder-2/sensors being clock-gated every ADC window. No wire-format change.
+- **GPIO button expanders — wire gen `0x0030`.** MCP23017 (I2C) and MCP23S17 (SPI) GPIO button expanders, up to 8 chips in any mix on the shared bus, 16 buttons each. Crosses the `&0xFFF0` mask, so upgrading from `0x0020` **factory-resets** the board (the configurator migrates the old config forward).
+
+### v0.2.0
+- **F411 clock self-sufficiency** — the app configures its own PLL / flash-latency / ART and no longer depends on the bootloader's clock setup, so an SWD cold-boot comes up at the right speed. Plus USB config-queue / `SET_REPORT` hardening and **mute-in-place** disabled buttons (a disabled button keeps its HID number and reports 0 rather than renumbering the others). Debounce default lowered 50 → 20 ms. No wire-format change (`FIRMWARE_VERSION` stays `0x0020`).
 
 ### v0.1.12
 - **F411: fixed a clock-base miscalculation that ran every timer 2× slow — the source of the reported input lag.** The F411 LL setup divided the *already-doubled* 96 MHz APB1 timer clock where it should divide by 200000 (F103's StdPeriph divides the un-doubled PCLK1 and relies on the APB1 ×2). Three sites: `board_tick.c` (TIM2 ran at 1 kHz not 2 kHz → `GetMillis()` half-rate → button debounce, exchange period, gesture windows all 2× their set durations — e.g. a 50 ms debounce acted like 100 ms); `board_pwm.c` (LED PWM 500 Hz instead of 1 kHz); `board_i2c.c` (Fast-Mode SCL ran at 266 kHz instead of 400 kHz — Standard-Mode duty formula used in Fast Mode). F103 unaffected. No wire-format change; `FIRMWARE_VERSION` stays `0x0020`, so upgrading does **not** factory-reset the board. (FreeJoyX#65)
