@@ -249,22 +249,30 @@ static uint8_t EncoderChannelLevel(dev_config_t * p_dev_config, int i, int ch, i
  * CW/CCW branches used: with a shift modifier assigned, the button fires only
  * while that shift is held; with no modifier it fires unless the physical input
  * is in the ignore list (an encoder line that another shift layer owns). */
-static void EncoderFireButton(logical_buttons_state_t * buf, dev_config_t * cfg,
-                              int8_t pin, const int8_t * ignore, uint8_t shifts_state)
+// Shift-modifier / ignore-list gate: does this encoder line's emission survive
+// the current shift state? A shift-assigned line fires only while its shift is
+// held; a line another active shift layer owns sits in the ignore list and is
+// suppressed. Shared by the immediate fire path (EncoderFireButton) and the
+// queue accumulator so both suppress an emission identically.
+static uint8_t EncoderButtonPermitted(dev_config_t * cfg, int8_t pin,
+                                      const int8_t * ignore, uint8_t shifts_state)
 {
 	uint8_t sm = cfg->buttons[pin].shift_modificator;
 	if (sm > 0)
-	{
-		if (shifts_state & (1 << (sm - 1)))
-			buf[pin].current_state = 1;
-		return;
-	}
+		return (shifts_state & (1 << (sm - 1))) ? 1 : 0;
 	for (int k = 0; k < MAX_ENCODERS_NUM; k++)
 	{
 		if (cfg->buttons[pin].physical_num == ignore[k])
-			return;
+			return 0;
 	}
-	buf[pin].current_state = 1;
+	return 1;
+}
+
+static void EncoderFireButton(logical_buttons_state_t * buf, dev_config_t * cfg,
+                              int8_t pin, const int8_t * ignore, uint8_t shifts_state)
+{
+	if (EncoderButtonPermitted(cfg, pin, ignore, shifts_state))
+		buf[pin].current_state = 1;
 }
 
 void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * p_dev_config)
@@ -417,8 +425,17 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 				// fast spin yields N clean presses instead of one held button.
 				// New detents this tick == the change in the running count.
 				int32_t delta = encoders_state[i].cnt - enc_prev_cnt[i];
-				while (delta > 0) { if (enc_pend_a[i] < ENC_QUEUE_CAP) enc_pend_a[i]++; delta--; }
-				while (delta < 0) { if (enc_pend_b[i] < ENC_QUEUE_CAP) enc_pend_b[i]++; delta++; }
+				// Apply the same shift-modifier / ignore-list gate the non-queue path
+				// applies through EncoderFireButton: a detent whose emission would be
+				// suppressed (shift not held, or line owned by another active shift
+				// layer) is DROPPED from the queue rather than pulsed. cnt itself stays
+				// the unconditional net truth -- it still drives the encoder-as-axis
+				// source -- so only the button queue is gated. Shift state is sampled
+				// once per tick (shifts_state), so all detents this tick share it.
+				uint8_t permit_a = EncoderButtonPermitted(p_dev_config, encoders_state[i].pin_a, ignore_a, shifts_state);
+				uint8_t permit_b = EncoderButtonPermitted(p_dev_config, encoders_state[i].pin_b, ignore_b, shifts_state);
+				while (delta > 0) { if (permit_a && enc_pend_a[i] < ENC_QUEUE_CAP) enc_pend_a[i]++; delta--; }
+				while (delta < 0) { if (permit_b && enc_pend_b[i] < ENC_QUEUE_CAP) enc_pend_b[i]++; delta++; }
 				enc_prev_cnt[i] = encoders_state[i].cnt;
 
 				// Net out opposite-direction pending steps. If the user reverses,
@@ -527,6 +544,9 @@ void EncodersInit(dev_config_t * p_dev_config)
 		encoders_state[i].state = 0xFF;		// unprimed -> first sample seeds prev, no phantom step
 		encoders_state[i].sub = 0;
 		encoders_state[i].time_last = 0;
+		encoders_state[i].cnt = 0;			// keep cnt coherent with enc_prev_cnt (below) so a
+											// re-init (should one ever run without the post-write
+											// NVIC_SystemReset) can't emit a phantom queue burst
 		// step-queue runtime state
 		enc_pend_a[i] = 0;
 		enc_pend_b[i] = 0;
