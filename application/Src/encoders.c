@@ -443,9 +443,10 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 				// (and vice-versa) instead of both draining in full -- so a
 				// spin-then-reverse jumps straight to the other direction rather than
 				// playing out a long, self-cancelling sequence. Only the net
-				// direction is ever left pending. (Already-played pulses stay
-				// accounted for: cnt tracks the true net, so pending == net-not-yet-
-				// sent, and the consumer still lands on the correct final value.)
+				// direction is ever left pending. (cnt tracks the true net for the
+				// axis source; pending is the net not-yet-sent MINUS any detents the
+				// shift/ignore gate above dropped, so the button queue can be a subset
+				// of cnt's motion -- the two are intentionally decoupled.)
 				uint8_t cancel = (enc_pend_a[i] < enc_pend_b[i]) ? enc_pend_a[i] : enc_pend_b[i];
 				enc_pend_a[i] -= cancel;
 				enc_pend_b[i] -= cancel;
