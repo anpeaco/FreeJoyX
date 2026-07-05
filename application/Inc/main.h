@@ -1027,6 +1027,8 @@ static const dev_config_t init_config =
 	 * only when both indices are >= 0. See ENCODER_PAIRING_PLAN.md. */
 	.slow_encoders[0 ... MAX_ENCODERS_NUM - 1] = { .btn_a = -1, .btn_b = -1 },
 
+	.encoder_gap_ms = 20,						// queue-mode OFF gap between pulses (short so a fast spin drains quickly; ON pulse = encoder_press_time_ms)
+
 };
 
 
