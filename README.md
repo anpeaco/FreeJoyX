@@ -12,7 +12,7 @@
 
 <img src="https://github.com/FreeJoy-Team/FreeJoy/blob/master/images/main.png">
 
-FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a widely configurable USB HID game-device firmware. It allows you to build your own HOTAS, pedals, steering wheel, sim-racing button box, etc., or customize a purchased one. FreeJoyX extends upstream FreeJoy with a second hardware-quadrature encoder, boolean-logic virtual buttons, tap and double-tap gesture button types, and a port to the STM32F411 BlackPill alongside the original BluePill.
+FreeJoyX is a fork of [FreeJoy](https://github.com/FreeJoy-Team/FreeJoy) — a widely configurable USB HID game-device firmware. It allows you to build your own HOTAS, pedals, steering wheel, sim-racing button box, etc., or customize a purchased one. FreeJoyX extends upstream FreeJoy with a second hardware-quadrature encoder, a reworked software-encoder path (explicit pin pairing, selectable 1×/2×/4× decode, and per-detent queue mode — see the [Encoders](https://github.com/anpeaco/FreeJoyX/wiki/Encoders) wiki page), boolean-logic virtual buttons, tap and double-tap gesture button types, and a port to the STM32F411 BlackPill alongside the original BluePill.
 
 ## Supported boards
 
@@ -41,7 +41,7 @@ haven't been run on a physical F411 yet, so treat them as unproven until they ar
 
 ## Getting started
 
-See the upstream [FreeJoy wiki](https://github.com/FreeJoy-Team/FreeJoyWiki) for the original feature set and flashing/configuration walkthrough. The features added by FreeJoyX are documented in the plan files alongside this repo (`F103_FASTENC_PLAN.md`, `F103_LOGIC_PLAN.md`, `F411_PORT_PLAN.md`, `F103_GESTURE_PLAN.md`).
+See the upstream [FreeJoy wiki](https://github.com/FreeJoy-Team/FreeJoyWiki) for the original feature set and flashing/configuration walkthrough. The features added by FreeJoyX are documented in the **[FreeJoyX wiki](https://github.com/anpeaco/FreeJoyX/wiki)** — including [Encoders](https://github.com/anpeaco/FreeJoyX/wiki/Encoders), [Button Types](https://github.com/anpeaco/FreeJoyX/wiki/Button-Types), and the [Timer Model](https://github.com/anpeaco/FreeJoyX/wiki/Timer-Model) — with deeper design notes in the plan files alongside this repo (`F103_FASTENC_PLAN.md`, `F103_LOGIC_PLAN.md`, `F411_PORT_PLAN.md`, `F103_GESTURE_PLAN.md`).
 
 ## Features
 
