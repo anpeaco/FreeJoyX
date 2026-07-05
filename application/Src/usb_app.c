@@ -453,6 +453,9 @@ void Board_TickISR(void)
 		           &params_report.shift_button_data);
 		AnalogGet(joy_report.axis_data, NULL, params_report.raw_axis_data);
 		AnalogGetDetect(params_report.detect_axis_raw);
+		EncoderGetMonitor(&params_report.enc_mon_net, &params_report.enc_mon_valid,
+		                  &params_report.enc_mon_invalid, &params_report.enc_mon_ab,
+		                  &params_report.enc_mon_slot);
 		POVsGet(joy_report.pov_data);
 
 		joy_buf[pos++] = REPORT_ID_JOY;

@@ -388,16 +388,28 @@ typedef struct
 	encoder_t mode;			// ENCODER_CONF_1x / _2x / _4x
 } fast_encoder_t;
 
+// Per-slow-encoder explicit pin pairing (wire gen 0x0040). Replaces the old
+// positional zip of ENCODER_INPUT_A/_B button slots -- pairing is now stored,
+// not re-derived from button-slot order. btn_a/btn_b are button-slot indices
+// (same space as encoder_state_t.pin_a/pin_b); -1 = unused. Detent mode lives
+// in encoders[] (SLOW_ENC_MODE_MASK). Direction is set by btn_a/btn_b order --
+// swapping them reverses it -- so there is no separate swap flag.
+// See ENCODER_PAIRING_PLAN.md.
+typedef struct
+{
+	int8_t  btn_a;			// button-slot index of the A line, -1 = unused
+	int8_t  btn_b;			// button-slot index of the B line, -1 = unused
+} slow_encoder_t;
+
 
 typedef struct
 {
   int32_t 				time_last;
 	int32_t 				cnt;
-	uint8_t 				state;					//:4?
+	uint8_t 				state;					// last 2-bit quadrature state (bit0=A, bit1=B); 0xFF = unprimed
 	int8_t 					pin_a;
 	int8_t 					pin_b;
-	int8_t					dir :4;					//:2?
-	int8_t					last_dir :4;		//:2?
+	int8_t					sub;						// signed quarter-step accumulator (state-machine decoder)
 
 
 } encoder_state_t;
@@ -640,6 +652,21 @@ typedef struct
 	// factory-reset / pre-0x0030 configs.
 	uint8_t					saved_per_exp[MAX_GPIO_EXPANDER_NUM];
 
+	// config 18 -- explicit slow-encoder pin pairing (wire gen 0x0040).
+	// Appended at the very end of dev_config_t so the 0x0030 -> 0x0040
+	// migration is a prefix-copy of the old bytes + synthesise-pairs:
+	// offsetof(dev_config_t, slow_encoders) equals the old config size (1620).
+	// Indices align with encoders[]/encoders_state[]; fast slots
+	// 0..MAX_FAST_ENCODER_NUM-1 are unused here. See ENCODER_PAIRING_PLAN.md.
+	slow_encoder_t			slow_encoders[MAX_ENCODERS_NUM];
+
+	// config 19 -- encoder OFF gap (wire gen 0x0050). Queue-mode only: the ON
+	// pulse stays = encoder_press_time_ms (wide, so a slow consumer samples it),
+	// while this is the OFF time between queued pulses -- keep it short so a fast
+	// spin's queue drains quickly. Appended at the very end so 0x0040 -> 0x0050 is
+	// a prefix-copy: offsetof(dev_config_t, encoder_gap_ms) == the old size (1652).
+	uint16_t				encoder_gap_ms;
+
 }dev_config_t;
 
 
@@ -708,6 +735,21 @@ typedef struct
 	 * end so older configurators that read the prefix are unaffected; new
 	 * configurators gate reading it on freejoyx_version >= 0.1.3. */
 	analog_data_t				detect_axis_raw[MAX_AXIS_NUM];
+
+	/* Encoder monitor (ENCODER_PAIRING_PLAN.md). Live decode diagnostics for the
+	 * most-recently-active slow encoder, so the configurator can measure
+	 * quarter-steps-per-detent (to pick 1x/2x/4x) and surface a noisy / faulty
+	 * signal that no decoder can fix. Free-running totals read as deltas by the
+	 * configurator (immune to params-report rate). Appended at the end ->
+	 * prefix-compatible; new configurators gate on freejoyx_version. net = signed
+	 * sum of decoded quarter-steps; valid = decodable single-step transitions;
+	 * invalid = un-decodable both-channel jumps; ab = live input (bit0=A, bit1=B);
+	 * slot = which slow-encoder slot (0xFF = none active yet). */
+	int16_t						enc_mon_net;
+	uint16_t					enc_mon_valid;
+	uint16_t					enc_mon_invalid;
+	uint8_t						enc_mon_ab;
+	uint8_t						enc_mon_slot;
 
 } params_report_t;
 

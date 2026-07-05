@@ -1020,7 +1020,15 @@ static const dev_config_t init_config =
 	.rgb_leds[47].input_num = -1,
 	.rgb_leds[48].input_num = -1,
 	.rgb_leds[49].input_num = -1,
-		
+
+	/* Explicit slow-encoder pairing: every slot defaults to "unwired" (-1/-1).
+	 * Without this the designated-init zero-fill reads as {btn_a:0, btn_b:0} =
+	 * phantom encoders all pairing button slot 0. EncodersInit forms an encoder
+	 * only when both indices are >= 0. See ENCODER_PAIRING_PLAN.md. */
+	.slow_encoders[0 ... MAX_ENCODERS_NUM - 1] = { .btn_a = -1, .btn_b = -1 },
+
+	.encoder_gap_ms = 20,						// queue-mode OFF gap between pulses (short so a fast spin drains quickly; ON pulse = encoder_press_time_ms)
+
 };
 
 
