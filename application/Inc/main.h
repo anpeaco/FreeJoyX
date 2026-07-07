@@ -842,12 +842,8 @@ static const dev_config_t init_config =
 	.axes_to_buttons[7].buttons_cnt = 0,
 	
 	
-	/* shift_config[].button = -1 means "no shift wired to this slot".
-	 * Slot count must equal MAX_SHIFTS_NUM (currently 8). Designated
-	 * initialisers default unmentioned slots to .button = 0 (a valid
-	 * button index), which would silently bind shift_config[N].button
-	 * to physical button 0 -- shift constantly held. Enumerate all 8.
-	 * Issue anpeaco/FreeJoyX#1. */
+	/* shift_config[] is the DEPRECATED (pre-0x0060) shift store, kept as
+	 * reserved bytes only. Never read by firmware; init to -1 for tidiness. */
 	.shift_config[0].button = -1,
 	.shift_config[1].button = -1,
 	.shift_config[2].button = -1,
@@ -856,6 +852,19 @@ static const dev_config_t init_config =
 	.shift_config[5].button = -1,
 	.shift_config[6].button = -1,
 	.shift_config[7].button = -1,
+
+	/* Dedicated shift buttons (wire gen 0x0060). Default to unwired. Designated
+	 * initialisers default unmentioned fields to 0; physical_num = 0 would bind the
+	 * shift to physical button 0 (shift constantly held) and src_b = 0 would pick
+	 * button 0 as Logic Source B -- so set both to -1 explicitly for all 8. */
+	.shift_buttons[0].physical_num = -1, .shift_buttons[0].src_b = -1,
+	.shift_buttons[1].physical_num = -1, .shift_buttons[1].src_b = -1,
+	.shift_buttons[2].physical_num = -1, .shift_buttons[2].src_b = -1,
+	.shift_buttons[3].physical_num = -1, .shift_buttons[3].src_b = -1,
+	.shift_buttons[4].physical_num = -1, .shift_buttons[4].src_b = -1,
+	.shift_buttons[5].physical_num = -1, .shift_buttons[5].src_b = -1,
+	.shift_buttons[6].physical_num = -1, .shift_buttons[6].src_b = -1,
+	.shift_buttons[7].physical_num = -1, .shift_buttons[7].src_b = -1,
 	
 	.encoders[0] = ENCODER_CONF_2x,
 	.encoders[1] = ENCODER_CONF_2x,
