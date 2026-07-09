@@ -606,10 +606,10 @@ typedef struct
 	
 	// config 14
 	shift_reg_config_t	shift_registers[4];
-	/* DEPRECATED (wire gen 0x0060): shift modifiers moved to shift_buttons[] at the
+	/* DEPRECATED (wire gen 0x0070): shift modifiers moved to shift_buttons[] at the
 	 * end of this struct. Kept as reserved bytes so every following field keeps its
 	 * offset (prefix migration stays valid). Never read by firmware; the
-	 * 0x0050->0x0060 migrator copies it into shift_buttons[]. */
+	 * 0x0050->0x0070 migrator copies it into shift_buttons[]. */
 	shift_modificator_t	shift_config[MAX_SHIFTS_NUM];
 	uint16_t						vid;
 	uint16_t						pid;
@@ -671,12 +671,20 @@ typedef struct
 	// a prefix-copy: offsetof(dev_config_t, encoder_gap_ms) == the old size (1652).
 	uint16_t				encoder_gap_ms;
 
-	/* Dedicated shift-modifier buttons (wire gen 0x0060). Full button_t entries,
+	/* Dedicated shift-modifier buttons (wire gen 0x0070). Full button_t entries,
 	 * processed like logical buttons (configurator restricts to NORMAL / TOGGLE* /
 	 * LOGIC) into shifts_state -- but never HID-reported and never counted against
 	 * the 128 button slots. Replaces the deprecated shift_config[] above.
-	 * Appended last so 0x0050 -> 0x0060 stays a prefix-copy migration. */
+	 * Appended last so 0x0050 -> 0x0070 stays a prefix-copy migration. */
 	button_t				shift_buttons[MAX_SHIFTS_NUM];
+
+	/* config 20 -- global debounce for every LOGIC-type button + shift (wire gen
+	 * 0x0070). One shared settle time: a LOGIC slot commits its computed output
+	 * only after the expression has been stable this long. Replaces the per-slot
+	 * delay_timer-as-debounce overload (which is now unused for LOGIC). 0 = off
+	 * (commit immediately). Appended last so 0x0050 -> 0x0070 stays a prefix-copy
+	 * migration: offsetof(dev_config_t, shift_buttons) is unchanged. */
+	uint16_t				logic_debounce_ms;
 
 }dev_config_t;
 

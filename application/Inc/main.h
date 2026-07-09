@@ -865,7 +865,10 @@ static const dev_config_t init_config =
 	.shift_buttons[5].physical_num = -1, .shift_buttons[5].src_b = -1,
 	.shift_buttons[6].physical_num = -1, .shift_buttons[6].src_b = -1,
 	.shift_buttons[7].physical_num = -1, .shift_buttons[7].src_b = -1,
-	
+
+	// Global LOGIC debounce, shared by every LOGIC button + shift. 0 = off.
+	.logic_debounce_ms = 0,
+
 	.encoders[0] = ENCODER_CONF_2x,
 	.encoders[1] = ENCODER_CONF_2x,
 	.encoders[2] = ENCODER_CONF_2x,

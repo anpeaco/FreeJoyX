@@ -176,13 +176,17 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 	uint16_t tmp_press_time;
 	uint16_t tmp_delay_time;
 
-	// TAP and DOUBLE_TAP own their own state machines and track timing
-	// internally. The standard delay_act ticker below would auto-transition
-	// DELAY -> PRESS at tmp_delay_time (= 0 for slots with no per-slot
-	// delay timer), clobbering the gesture-specific dwell. Bail before
+	// TAP / DOUBLE_TAP / LOGIC own their own state machines and track timing
+	// internally (LOGIC reuses delay_act + time_last for its debounce settle
+	// window). The standard delay_act ticker below would auto-transition
+	// DELAY -> PRESS at tmp_delay_time (= 0 for slots with no per-slot delay
+	// timer), clobbering that dwell -- for LOGIC that means the timer flips to
+	// PRESS after 1 ms, the LOGIC case then restarts its window every tick, and
+	// a nonzero logic_debounce_ms never commits (output freezes). Bail before
 	// touching delay_act for these types.
 	if (pbtn->type == TAP ||
-	    pbtn->type == DOUBLE_TAP)
+	    pbtn->type == DOUBLE_TAP ||
+	    pbtn->type == LOGIC)
 	{
 		return;
 	}
@@ -625,6 +629,13 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				break;
 				
 			case SEQUENTIAL_TOGGLE:
+			{
+				/* Ring cycle generalised to the shift arrays when num == 0xFF, so one
+				 * physical button can cycle shift layers (S1 -> S2 -> S1 ...). Members are
+				 * slots in the SAME array sharing this physical_num + SEQUENTIAL_TOGGLE. */
+				button_t                *seq_btn   = (num == 0xFF) ? p_dev_config->shift_buttons : p_dev_config->buttons;
+				logical_buttons_state_t *seq_state = (num == 0xFF) ? shift_buttons_state         : logical_buttons_state;
+				uint8_t                  seq_count = (num == 0xFF) ? MAX_SHIFTS_NUM              : MAX_BUTTONS_NUM;
 					if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
 					// nop
@@ -638,27 +649,27 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// searching for enabled button
 					uint8_t is_last = 1;
 					uint8_t is_set_found = 0;
-					for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
+					for (uint8_t i=0; i<seq_count; i++)
 					{
-						if (p_dev_config->buttons[i].physical_num == pbtn->physical_num &&
-							p_dev_config->buttons[i].type == SEQUENTIAL_TOGGLE)
+						if (seq_btn[i].physical_num == pbtn->physical_num &&
+							seq_btn[i].type == SEQUENTIAL_TOGGLE)
 						{
 							//disable enabled button
-							if (logical_buttons_state[i].on_state == 1 && 
-									logical_buttons_state[i].delay_act == BUTTON_ACTION_IDLE)	// prevent multiple enabling
+							if (seq_state[i].on_state == 1 && 
+									seq_state[i].delay_act == BUTTON_ACTION_IDLE)	// prevent multiple enabling
 							{
-								logical_buttons_state[i].on_state = 0;
-								logical_buttons_state[i].off_state = 0;
-								logical_buttons_state[i].current_state = 0;
+								seq_state[i].on_state = 0;
+								seq_state[i].off_state = 0;
+								seq_state[i].current_state = 0;
 								is_set_found = 1;
 							}
 							else if (is_set_found)	// enable next button in list
 							{
-								logical_buttons_state[i].delay_act = BUTTON_ACTION_DELAY;
-								logical_buttons_state[i].time_last = millis;
+								seq_state[i].delay_act = BUTTON_ACTION_DELAY;
+								seq_state[i].time_last = millis;
 								
-								logical_buttons_state[i].on_state = 1;
-								logical_buttons_state[i].off_state = 0;
+								seq_state[i].on_state = 1;
+								seq_state[i].off_state = 0;
 								is_last = 0;
 								break;
 							}
@@ -669,16 +680,16 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// finding first in list and enable it
 					if (is_last && is_set_found)
 					{
-						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
+						for (uint8_t i=0; i<seq_count; i++)
 						{
-							if (p_dev_config->buttons[i].physical_num == pbtn->physical_num &&
-								p_dev_config->buttons[i].type == SEQUENTIAL_TOGGLE)
+							if (seq_btn[i].physical_num == pbtn->physical_num &&
+								seq_btn[i].type == SEQUENTIAL_TOGGLE)
 							{
-								logical_buttons_state[i].delay_act = BUTTON_ACTION_DELAY;
-								logical_buttons_state[i].time_last = millis;
+								seq_state[i].delay_act = BUTTON_ACTION_DELAY;
+								seq_state[i].time_last = millis;
 								
-								logical_buttons_state[i].on_state = 1;
-								logical_buttons_state[i].off_state = 0;
+								seq_state[i].on_state = 1;
+								seq_state[i].off_state = 0;
 								break;
 							}
 						}
@@ -691,6 +702,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				}	
 				
 				break;
+			}
 
 			case SEQUENTIAL_BUTTON:
 				if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
@@ -763,9 +775,9 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				// Boolean expression over physical button inputs. Source A
 				// is carried in the slot's physical_num (reused field);
 				// Source B is in src_b (binary ops) and ignored for NOT.
-				// Debounce duration comes from the slot's delay_timer
-				// field, mapped onto button_timerN_ms; BUTTON_TIMER_OFF
-				// means commit immediately each tick.
+				// Debounce duration is the single global dev_config.logic_debounce_ms
+				// (shared by every LOGIC button + shift); 0 = commit immediately.
+				// delay_timer is no longer read for LOGIC.
 				int8_t a_idx = pbtn->physical_num;
 				int8_t b_idx = pbtn->src_b;
 
@@ -787,16 +799,10 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					default:                   computed = 0;          break;
 				}
 
-				// Resolve the debounce window from delay_timer, mirroring
-				// the pattern other button types use for press_timer.
-				uint16_t debounce_ms = 0;
-				switch (pbtn->delay_timer)
-				{
-					case BUTTON_TIMER_1: debounce_ms = p_dev_config->button_timer1_ms; break;
-					case BUTTON_TIMER_2: debounce_ms = p_dev_config->button_timer2_ms; break;
-					case BUTTON_TIMER_3: debounce_ms = p_dev_config->button_timer3_ms; break;
-					default:             debounce_ms = 0;                              break;	// BUTTON_TIMER_OFF
-				}
+				// Debounce window is now a single global setting shared by every LOGIC
+				// button + shift (dev_config.logic_debounce_ms). Replaces the old per-slot
+				// delay_timer picker. 0 = commit immediately (no debounce).
+				uint16_t debounce_ms = p_dev_config->logic_debounce_ms;
 
 				if (debounce_ms == 0)
 				{
@@ -925,6 +931,23 @@ void SequentialButtons_Init (dev_config_t * p_dev_config)
 			{
 				logical_buttons_state[i].on_state = 1;
 				logical_buttons_state[i].current_state = 1;
+				break;
+			}
+		}
+	}
+	// shift buttons: seed the first SEQUENTIAL_TOGGLE slot of each ring (same pass
+	// as above, on the shift arrays) so the first press has an enabled layer to
+	// advance FROM. One physical can cycle shift layers (S1 -> S2 -> S1 ...); the
+	// lowest-index shift slot on each physical is the boot-active layer.
+	for (uint8_t physical_num=0; physical_num<MAX_BUTTONS_NUM; physical_num++)
+	{
+		for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
+		{
+			if (p_dev_config->shift_buttons[i].type == SEQUENTIAL_TOGGLE &&
+					p_dev_config->shift_buttons[i].physical_num == physical_num)
+			{
+				shift_buttons_state[i].on_state = 1;
+				shift_buttons_state[i].current_state = 1;
 				break;
 			}
 		}
@@ -1297,9 +1320,12 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 	 * then OR each into the shifts_state bitmap. Shift buttons live in a
 	 * dedicated array (dev_config.shift_buttons[]) -- never in the HID report,
 	 * never counted against the 128 button slots. The configurator restricts
-	 * their type to NORMAL / TOGGLE* / LOGIC; num == 0xFF keeps them out of the
-	 * gesture branch (has_tap/has_dt) and the cross-slot POV/RADIO/SEQUENTIAL
-	 * cases never fire for those types. */
+	 * their type to NORMAL / TOGGLE* / LOGIC / SEQUENTIAL_TOGGLE; num == 0xFF
+	 * keeps them out of the gesture branch (has_tap/has_dt). Of the cross-slot
+	 * cases only SEQUENTIAL_TOGGLE is num-safe (it array-selects on 0xFF); the
+	 * others (POV/RADIO/SEQUENTIAL_BUTTON) would touch the main arrays, so the
+	 * configurator's type filter -- not the firmware -- is what keeps them off
+	 * shifts. */
 	for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
 	{
 		if (p_dev_config->shift_buttons[i].physical_num >= 0)
