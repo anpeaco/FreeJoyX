@@ -29,6 +29,7 @@
 uint8_t												raw_buttons_data[MAX_BUTTONS_NUM];
 physical_buttons_state_t 			physical_buttons_state[MAX_BUTTONS_NUM];
 logical_buttons_state_t 			logical_buttons_state[MAX_BUTTONS_NUM];
+logical_buttons_state_t 			shift_buttons_state[MAX_SHIFTS_NUM];	// dedicated shift-button runtime state (wire gen 0x0060)
 uint8_t												phy_buttons_data[MAX_BUTTONS_NUM/8];
 uint8_t												log_buttons_data[MAX_BUTTONS_NUM/8];
 button_data_t 								out_buttons_data[MAX_BUTTONS_NUM/8];
@@ -106,10 +107,10 @@ static uint8_t                has_normal[MAX_BUTTONS_NUM];
   *         MIN_PULSE_MS.
   * @retval Floor duration in ms (>= MIN_PULSE_MS).
   */
-static uint16_t ResolvePressFloorMs (dev_config_t * p_dev_config, uint8_t num)
+static uint16_t ResolvePressFloorMs (dev_config_t * p_dev_config, button_t * pbtn)
 {
 	uint16_t t;
-	switch (p_dev_config->buttons[num].press_timer)
+	switch (pbtn->press_timer)
 	{
 		case BUTTON_TIMER_1: t = p_dev_config->button_timer1_ms; break;
 		case BUTTON_TIMER_2: t = p_dev_config->button_timer2_ms; break;
@@ -170,24 +171,28 @@ void ButtonsDebounceProcess (dev_config_t * p_dev_config)
 	}
 }
 
-static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state, int32_t millis, dev_config_t * p_dev_config, uint8_t num)
+static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state, int32_t millis, dev_config_t * p_dev_config, button_t * pbtn)
 {
 	uint16_t tmp_press_time;
 	uint16_t tmp_delay_time;
 
-	// TAP and DOUBLE_TAP own their own state machines and track timing
-	// internally. The standard delay_act ticker below would auto-transition
-	// DELAY -> PRESS at tmp_delay_time (= 0 for slots with no per-slot
-	// delay timer), clobbering the gesture-specific dwell. Bail before
+	// TAP / DOUBLE_TAP / LOGIC own their own state machines and track timing
+	// internally (LOGIC reuses delay_act + time_last for its debounce settle
+	// window). The standard delay_act ticker below would auto-transition
+	// DELAY -> PRESS at tmp_delay_time (= 0 for slots with no per-slot delay
+	// timer), clobbering that dwell -- for LOGIC that means the timer flips to
+	// PRESS after 1 ms, the LOGIC case then restarts its window every tick, and
+	// a nonzero logic_debounce_ms never commits (output freezes). Bail before
 	// touching delay_act for these types.
-	if (p_dev_config->buttons[num].type == TAP ||
-	    p_dev_config->buttons[num].type == DOUBLE_TAP)
+	if (pbtn->type == TAP ||
+	    pbtn->type == DOUBLE_TAP ||
+	    pbtn->type == LOGIC)
 	{
 		return;
 	}
 
 	// get toggle press timer
-	switch (p_dev_config->buttons[num].press_timer)
+	switch (pbtn->press_timer)
 	{	
 			case BUTTON_TIMER_1:
 				tmp_press_time = p_dev_config->button_timer1_ms;
@@ -208,7 +213,7 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 	{
 		tmp_press_time = 100;
 	}
-	switch (p_dev_config->buttons[num].delay_timer)
+	switch (pbtn->delay_timer)
 	{	
 		case BUTTON_TIMER_1:
 				tmp_delay_time = p_dev_config->button_timer1_ms;
@@ -225,10 +230,10 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 	}
 	
 	// Center POVs has forced delay
-	if ( tmp_delay_time == 0 && (p_dev_config->buttons[num].type == POV1_CENTER ||
-			p_dev_config->buttons[num].type == POV2_CENTER ||
-			p_dev_config->buttons[num].type == POV3_CENTER ||
-			p_dev_config->buttons[num].type == POV4_CENTER))
+	if ( tmp_delay_time == 0 && (pbtn->type == POV1_CENTER ||
+			pbtn->type == POV2_CENTER ||
+			pbtn->type == POV3_CENTER ||
+			pbtn->type == POV4_CENTER))
 	{
 		tmp_delay_time = 100;
 	}
@@ -241,8 +246,8 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 
 
 	// set max delay timer for sequential and radio buttons // heroviy kostil`, need if for check all seq buttons for types of timings
-//	if (p_dev_config->buttons[num].delay_timer && 
-//		 (p_dev_config->buttons[num].type == SEQUENTIAL_TOGGLE || p_dev_config->buttons[num].type == SEQUENTIAL_BUTTON))
+//	if (pbtn->delay_timer && 
+//		 (pbtn->type == SEQUENTIAL_TOGGLE || pbtn->type == SEQUENTIAL_BUTTON))
 //	{
 //		if(p_dev_config->button_timer1_ms > p_dev_config->button_timer2_ms && p_dev_config->button_timer1_ms > p_dev_config->button_timer3_ms)
 //				tmp_delay_time = p_dev_config->button_timer1_ms;
@@ -279,16 +284,16 @@ static void LogicalButtonProcessTimer (logical_buttons_state_t * p_button_state,
 	* @param  num: Button number
   * @retval None
   */
-void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_t * pov_buf, dev_config_t * p_dev_config, uint8_t num)
+void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_t * pov_buf, dev_config_t * p_dev_config, button_t * pbtn, uint8_t num)
 {	
 	
 	int32_t millis;
 	uint8_t pov_group = 0;
 	
 	millis = GetMillis();
-	LogicalButtonProcessTimer(p_button_state, millis, p_dev_config, num);
+	LogicalButtonProcessTimer(p_button_state, millis, p_dev_config, pbtn);
 	
-		switch (p_dev_config->buttons[num].type)
+		switch (pbtn->type)
 		{				
 			case BUTTON_NORMAL:
 			case POV1_CENTER:
@@ -306,10 +311,10 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				 * body but live on their own physical inputs and are not
 				 * affected (has_tap / has_dt only get set for actual TAP /
 				 * DOUBLE_TAP slots, so the predicate is false for them). */
-				if (p_dev_config->buttons[num].type == BUTTON_NORMAL)
+				if (pbtn->type == BUTTON_NORMAL)
 				{
-					int8_t p = p_dev_config->buttons[num].physical_num;
-					if (p >= 0 && p < MAX_BUTTONS_NUM && (has_tap[p] || has_dt[p]))
+					int8_t p = pbtn->physical_num;
+					if (num < MAX_BUTTONS_NUM && p >= 0 && p < MAX_BUTTONS_NUM && (has_tap[p] || has_dt[p]))
 					{
 						/* Issue #22: re-arm release_floor each tick while
 						 * NORMAL_HELD; on exit, output stays high until the
@@ -317,7 +322,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 						if (gesture[p].state == GESTURE_STATE_NORMAL_HELD)
 						{
 							p_button_state->release_floor =
-							    millis + ResolvePressFloorMs(p_dev_config, num);
+							    millis + ResolvePressFloorMs(p_dev_config, pbtn);
 							p_button_state->current_state = 1;
 						}
 						else
@@ -352,7 +357,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// is still set from the prior tap). Acceptable: that's
 					// double-tap-cadence territory and the user opted into
 					// it by not configuring a DT slot.
-					if (p_dev_config->buttons[num].type == BUTTON_NORMAL &&
+					if (pbtn->type == BUTTON_NORMAL &&
 					    p_button_state->curr_physical_state > p_button_state->prev_physical_state)
 					{
 						p_button_state->time_last = millis;
@@ -540,20 +545,20 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				}
 					
 				// set bit in povs data
-				if (p_dev_config->buttons[num].type == POV1_UP || p_dev_config->buttons[num].type == POV2_UP ||
-						p_dev_config->buttons[num].type == POV3_UP || p_dev_config->buttons[num].type == POV4_UP)
+				if (pbtn->type == POV1_UP || pbtn->type == POV2_UP ||
+						pbtn->type == POV3_UP || pbtn->type == POV4_UP)
 				{
 					pov_buf[pov_group] &= ~(1 << 3);
 					pov_buf[pov_group] |= (p_button_state->current_state << 3);
 				}
-				else if (p_dev_config->buttons[num].type == POV1_RIGHT || p_dev_config->buttons[num].type == POV2_RIGHT ||
-								 p_dev_config->buttons[num].type == POV3_RIGHT || p_dev_config->buttons[num].type == POV4_RIGHT)
+				else if (pbtn->type == POV1_RIGHT || pbtn->type == POV2_RIGHT ||
+								 pbtn->type == POV3_RIGHT || pbtn->type == POV4_RIGHT)
 				{
 					pov_buf[pov_group] &= ~(1 << 2);
 					pov_buf[pov_group] |= (p_button_state->current_state << 2);
 				}
-				else if (p_dev_config->buttons[num].type == POV1_DOWN || p_dev_config->buttons[num].type == POV2_DOWN ||
-								 p_dev_config->buttons[num].type == POV3_DOWN || p_dev_config->buttons[num].type == POV4_DOWN)
+				else if (pbtn->type == POV1_DOWN || pbtn->type == POV2_DOWN ||
+								 pbtn->type == POV3_DOWN || pbtn->type == POV4_DOWN)
 				{
 					pov_buf[pov_group] &= ~(1 << 1);
 					pov_buf[pov_group] |= (p_button_state->current_state << 1);
@@ -604,7 +609,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					
 					for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
 					{
-						if (p_dev_config->buttons[i].type == p_dev_config->buttons[num].type && i != num)
+						if (p_dev_config->buttons[i].type == pbtn->type && i != num)
 						{
 							logical_buttons_state[i].current_state = logical_buttons_state[i].off_state;
 						}
@@ -624,6 +629,13 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				break;
 				
 			case SEQUENTIAL_TOGGLE:
+			{
+				/* Ring cycle generalised to the shift arrays when num == 0xFF, so one
+				 * physical button can cycle shift layers (S1 -> S2 -> S1 ...). Members are
+				 * slots in the SAME array sharing this physical_num + SEQUENTIAL_TOGGLE. */
+				button_t                *seq_btn   = (num == 0xFF) ? p_dev_config->shift_buttons : p_dev_config->buttons;
+				logical_buttons_state_t *seq_state = (num == 0xFF) ? shift_buttons_state         : logical_buttons_state;
+				uint8_t                  seq_count = (num == 0xFF) ? MAX_SHIFTS_NUM              : MAX_BUTTONS_NUM;
 					if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
 				{
 					// nop
@@ -637,27 +649,27 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// searching for enabled button
 					uint8_t is_last = 1;
 					uint8_t is_set_found = 0;
-					for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
+					for (uint8_t i=0; i<seq_count; i++)
 					{
-						if (p_dev_config->buttons[i].physical_num == p_dev_config->buttons[num].physical_num &&
-							p_dev_config->buttons[i].type == SEQUENTIAL_TOGGLE)
+						if (seq_btn[i].physical_num == pbtn->physical_num &&
+							seq_btn[i].type == SEQUENTIAL_TOGGLE)
 						{
 							//disable enabled button
-							if (logical_buttons_state[i].on_state == 1 && 
-									logical_buttons_state[i].delay_act == BUTTON_ACTION_IDLE)	// prevent multiple enabling
+							if (seq_state[i].on_state == 1 && 
+									seq_state[i].delay_act == BUTTON_ACTION_IDLE)	// prevent multiple enabling
 							{
-								logical_buttons_state[i].on_state = 0;
-								logical_buttons_state[i].off_state = 0;
-								logical_buttons_state[i].current_state = 0;
+								seq_state[i].on_state = 0;
+								seq_state[i].off_state = 0;
+								seq_state[i].current_state = 0;
 								is_set_found = 1;
 							}
 							else if (is_set_found)	// enable next button in list
 							{
-								logical_buttons_state[i].delay_act = BUTTON_ACTION_DELAY;
-								logical_buttons_state[i].time_last = millis;
+								seq_state[i].delay_act = BUTTON_ACTION_DELAY;
+								seq_state[i].time_last = millis;
 								
-								logical_buttons_state[i].on_state = 1;
-								logical_buttons_state[i].off_state = 0;
+								seq_state[i].on_state = 1;
+								seq_state[i].off_state = 0;
 								is_last = 0;
 								break;
 							}
@@ -668,16 +680,16 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					// finding first in list and enable it
 					if (is_last && is_set_found)
 					{
-						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
+						for (uint8_t i=0; i<seq_count; i++)
 						{
-							if (p_dev_config->buttons[i].physical_num == p_dev_config->buttons[num].physical_num &&
-								p_dev_config->buttons[i].type == SEQUENTIAL_TOGGLE)
+							if (seq_btn[i].physical_num == pbtn->physical_num &&
+								seq_btn[i].type == SEQUENTIAL_TOGGLE)
 							{
-								logical_buttons_state[i].delay_act = BUTTON_ACTION_DELAY;
-								logical_buttons_state[i].time_last = millis;
+								seq_state[i].delay_act = BUTTON_ACTION_DELAY;
+								seq_state[i].time_last = millis;
 								
-								logical_buttons_state[i].on_state = 1;
-								logical_buttons_state[i].off_state = 0;
+								seq_state[i].on_state = 1;
+								seq_state[i].off_state = 0;
 								break;
 							}
 						}
@@ -690,6 +702,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				}	
 				
 				break;
+			}
 
 			case SEQUENTIAL_BUTTON:
 				if (p_button_state->delay_act == BUTTON_ACTION_DELAY)
@@ -707,7 +720,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					uint8_t is_set_found = 0;
 					for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
 					{
-						if (p_dev_config->buttons[i].physical_num == p_dev_config->buttons[num].physical_num &&
+						if (p_dev_config->buttons[i].physical_num == pbtn->physical_num &&
 							p_dev_config->buttons[i].type == SEQUENTIAL_BUTTON)
 						{
 							//disable enabled button
@@ -737,7 +750,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					{
 						for (uint8_t i=0; i<MAX_BUTTONS_NUM; i++)
 						{
-							if (p_dev_config->buttons[i].physical_num == p_dev_config->buttons[num].physical_num &&
+							if (p_dev_config->buttons[i].physical_num == pbtn->physical_num &&
 								p_dev_config->buttons[i].type == SEQUENTIAL_BUTTON)
 							{
 								logical_buttons_state[i].delay_act = BUTTON_ACTION_DELAY;
@@ -762,18 +775,18 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				// Boolean expression over physical button inputs. Source A
 				// is carried in the slot's physical_num (reused field);
 				// Source B is in src_b (binary ops) and ignored for NOT.
-				// Debounce duration comes from the slot's delay_timer
-				// field, mapped onto button_timerN_ms; BUTTON_TIMER_OFF
-				// means commit immediately each tick.
-				int8_t a_idx = p_dev_config->buttons[num].physical_num;
-				int8_t b_idx = p_dev_config->buttons[num].src_b;
+				// Debounce duration is the single global dev_config.logic_debounce_ms
+				// (shared by every LOGIC button + shift); 0 = commit immediately.
+				// delay_timer is no longer read for LOGIC.
+				int8_t a_idx = pbtn->physical_num;
+				int8_t b_idx = pbtn->src_b;
 
 				// Out-of-range / unassigned source -> treat as not pressed.
 				uint8_t a = (a_idx >= 0 && a_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[a_idx] != 0) : 0;
 				uint8_t b = (b_idx >= 0 && b_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[b_idx] != 0) : 0;
 
 				uint8_t computed = 0;
-				switch (p_dev_config->buttons[num].op)
+				switch (pbtn->op)
 				{
 					case LOGIC_OP_AND:         computed =  (a &&  b); break;
 					case LOGIC_OP_OR:          computed =  (a ||  b); break;
@@ -786,16 +799,10 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					default:                   computed = 0;          break;
 				}
 
-				// Resolve the debounce window from delay_timer, mirroring
-				// the pattern other button types use for press_timer.
-				uint16_t debounce_ms = 0;
-				switch (p_dev_config->buttons[num].delay_timer)
-				{
-					case BUTTON_TIMER_1: debounce_ms = p_dev_config->button_timer1_ms; break;
-					case BUTTON_TIMER_2: debounce_ms = p_dev_config->button_timer2_ms; break;
-					case BUTTON_TIMER_3: debounce_ms = p_dev_config->button_timer3_ms; break;
-					default:             debounce_ms = 0;                              break;	// BUTTON_TIMER_OFF
-				}
+				// Debounce window is now a single global setting shared by every LOGIC
+				// button + shift (dev_config.logic_debounce_ms). Replaces the old per-slot
+				// delay_timer picker. 0 = commit immediately (no debounce).
+				uint16_t debounce_ms = p_dev_config->logic_debounce_ms;
 
 				if (debounce_ms == 0)
 				{
@@ -834,7 +841,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				 * the per-slot press_timer floor: arm release_floor to
 				 * fire_time + max(press_timer, MIN_PULSE_MS) so the host
 				 * sees a press of at least that duration. */
-				int8_t p = p_dev_config->buttons[num].physical_num;
+				int8_t p = pbtn->physical_num;
 				if (p >= 0 && p < MAX_BUTTONS_NUM &&
 				    gesture[p].tap_pulse_until > millis)
 				{
@@ -843,7 +850,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 					 * fire-time == tap_pulse_until - MIN_PULSE_MS by
 					 * construction (set by GestureProcessAll). */
 					int32_t fire_time = gesture[p].tap_pulse_until - MIN_PULSE_MS;
-					int32_t deadline  = fire_time + ResolvePressFloorMs(p_dev_config, num);
+					int32_t deadline  = fire_time + ResolvePressFloorMs(p_dev_config, pbtn);
 					if (deadline > p_button_state->release_floor)
 					{
 						p_button_state->release_floor = deadline;
@@ -861,7 +868,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				 * release_floor each tick. After release (state -> IDLE or
 				 * curr_physical == 0), output stays high until the floor
 				 * expires. */
-				int8_t p = p_dev_config->buttons[num].physical_num;
+				int8_t p = pbtn->physical_num;
 				uint8_t high =
 				    (p >= 0 && p < MAX_BUTTONS_NUM &&
 				     gesture[p].state == GESTURE_STATE_DT_HELD &&
@@ -869,7 +876,7 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				if (high)
 				{
 					p_button_state->release_floor =
-					    millis + ResolvePressFloorMs(p_dev_config, num);
+					    millis + ResolvePressFloorMs(p_dev_config, pbtn);
 					p_button_state->current_state = 1;
 				}
 				else
@@ -924,6 +931,23 @@ void SequentialButtons_Init (dev_config_t * p_dev_config)
 			{
 				logical_buttons_state[i].on_state = 1;
 				logical_buttons_state[i].current_state = 1;
+				break;
+			}
+		}
+	}
+	// shift buttons: seed the first SEQUENTIAL_TOGGLE slot of each ring (same pass
+	// as above, on the shift arrays) so the first press has an enabled layer to
+	// advance FROM. One physical can cycle shift layers (S1 -> S2 -> S1 ...); the
+	// lowest-index shift slot on each physical is the boot-active layer.
+	for (uint8_t physical_num=0; physical_num<MAX_BUTTONS_NUM; physical_num++)
+	{
+		for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
+		{
+			if (p_dev_config->shift_buttons[i].type == SEQUENTIAL_TOGGLE &&
+					p_dev_config->shift_buttons[i].physical_num == physical_num)
+			{
+				shift_buttons_state[i].on_state = 1;
+				shift_buttons_state[i].current_state = 1;
 				break;
 			}
 		}
@@ -1209,7 +1233,7 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 		// check logical buttons to have shift modificators							// disable if no shift?
 		uint8_t any_shift_configured = 0;
 		for (uint8_t s = 0; s < MAX_SHIFTS_NUM; s++) {
-			if (p_dev_config->shift_config[s].button >= 0) { any_shift_configured = 1; break; }
+			if (p_dev_config->shift_buttons[s].physical_num >= 0) { any_shift_configured = 1; break; }
 		}
 		if (any_shift_configured)
 		{
@@ -1225,7 +1249,7 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 						logical_buttons_state[j].prev_physical_state = logical_buttons_state[j].curr_physical_state;
 						logical_buttons_state[j].curr_physical_state = physical_buttons_state[p_dev_config->buttons[j].physical_num].current_state;
 						
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
+						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, &p_dev_config->buttons[j], j);
 					}
 					else if (logical_buttons_state[j].current_state)	// shift released for this button
 					{
@@ -1236,7 +1260,7 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 						logical_buttons_state[j].current_state = 0;
 						logical_buttons_state[j].curr_physical_state = 0;
 						logical_buttons_state[j].time_last = 0;			
-						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
+						LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, &p_dev_config->buttons[j], j);
 					}
 				}
 			}
@@ -1251,7 +1275,7 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 					logical_buttons_state[j].prev_physical_state = logical_buttons_state[j].curr_physical_state;
 					logical_buttons_state[j].curr_physical_state = physical_buttons_state[p_dev_config->buttons[j].physical_num].current_state;		
 					
-					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
+					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, &p_dev_config->buttons[j], j);
 				}
 			}
 		}		
@@ -1275,7 +1299,7 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 				{
 					logical_buttons_state[j].prev_physical_state = logical_buttons_state[j].curr_physical_state;
 					logical_buttons_state[j].curr_physical_state = physical_buttons_state[p_dev_config->buttons[j].physical_num].current_state;
-					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
+					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, &p_dev_config->buttons[j], j);
 				}
 				else if (logical_buttons_state[j].current_state)
 				{
@@ -1285,18 +1309,38 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 					logical_buttons_state[j].current_state = 0;
 					logical_buttons_state[j].curr_physical_state = 0;
 					logical_buttons_state[j].time_last = 0;
-					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, j);
+					LogicalButtonProcessState(&logical_buttons_state[j], pov_pos, p_dev_config, &p_dev_config->buttons[j], j);
 				}
 			}
 		}
 	}	
 	
+	/* Drive each configured shift button through the same state machine that
+	 * produces a logical button's current_state, into shift_buttons_state[],
+	 * then OR each into the shifts_state bitmap. Shift buttons live in a
+	 * dedicated array (dev_config.shift_buttons[]) -- never in the HID report,
+	 * never counted against the 128 button slots. The configurator restricts
+	 * their type to NORMAL / TOGGLE* / LOGIC / SEQUENTIAL_TOGGLE; num == 0xFF
+	 * keeps them out of the gesture branch (has_tap/has_dt). Of the cross-slot
+	 * cases only SEQUENTIAL_TOGGLE is num-safe (it array-selects on 0xFF); the
+	 * others (POV/RADIO/SEQUENTIAL_BUTTON) would touch the main arrays, so the
+	 * configurator's type filter -- not the firmware -- is what keeps them off
+	 * shifts. */
+	for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
+	{
+		if (p_dev_config->shift_buttons[i].physical_num >= 0)
+		{
+			shift_buttons_state[i].prev_physical_state = shift_buttons_state[i].curr_physical_state;
+			shift_buttons_state[i].curr_physical_state = physical_buttons_state[p_dev_config->shift_buttons[i].physical_num].current_state;
+			LogicalButtonProcessState(&shift_buttons_state[i], pov_pos, p_dev_config, &p_dev_config->shift_buttons[i], 0xFF);
+		}
+	}
 	shifts_state = 0;
 	for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
 	{
-		if (p_dev_config->shift_config[i].button >= 0)
+		if (p_dev_config->shift_buttons[i].physical_num >= 0)
 		{
-			shifts_state |= (logical_buttons_state[p_dev_config->shift_config[i].button].current_state << i);
+			shifts_state |= (shift_buttons_state[i].current_state << i);
 		}
 	}
 	

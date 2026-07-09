@@ -55,7 +55,7 @@ static inline uint8_t Button_IsPovDirection(button_type_t type)
 }
 
 void ButtonsDebounceProcess(dev_config_t * p_dev_config);
-void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_t * pov_buf, dev_config_t * p_dev_config, uint8_t pos);
+void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_t * pov_buf, dev_config_t * p_dev_config, button_t * pbtn, uint8_t pos);
 void RadioButtons_Init (dev_config_t * p_dev_config);
 void SequentialButtons_Init (dev_config_t * p_dev_config);
 void Gestures_Init (dev_config_t * p_dev_config);
