@@ -268,61 +268,16 @@ uint8_t Composite_ConfigDescriptor[Composite_SIZ_CONFIG_DESC] =
   }; /* JoystickHID_ConfigDescriptor */
 	
 	
-uint8_t JoystickHID_ReportDescriptor[JoystickHID_SIZ_REPORT_DESC] =
-  {                    
-    0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
-    0x09, 0x04,                    // USAGE (Joystick)
-    0xa1, 0x01,                    // COLLECTION (Application)
+/* Backing storage for the joystick HID report descriptor. It is filled at USB
+ * init by Get_ReportDesc() -> BuildJoyReportDesc() (usb_hw.c / joy_report_desc.c)
+ * from the live app_config, so the descriptor matches exactly the buttons / axes
+ * / POVs the per-tick report emits. CustomHID_init() rebuilds it before
+ * PowerOn()/enumeration, so the array only needs to exist as (zeroed) storage --
+ * no static initializer. The previous hand-written descriptor here was dead
+ * placeholder data that never reached the host (and carried a stale copy of the
+ * issue #81 POV Null-State bug). */
+uint8_t JoystickHID_ReportDescriptor[JoystickHID_SIZ_REPORT_DESC];
 
-		0x85, REPORT_ID_JOY,				 	 //		REPORT_ID	(JOY_REPORT_ID)	
-
-		// buttons data
-		0x05, 0x09,                    //   USAGE_PAGE (Button)		
-    0x19, 0x01,                    //   USAGE_MINIMUM (Button 1)
-    0x29, MAX_BUTTONS_NUM,         //   USAGE_MAXIMUM (Button MAX_BUTTONS_NUM)
-    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
-    0x25, 0x01,                    //   LOGICAL_MAXIMUM (1)
-    0x75, 0x01,                    //   REPORT_SIZE (1)
-    0x95, MAX_BUTTONS_NUM,         //   REPORT_COUNT (MAX_BUTTONS_NUM)
-    0x81, 0x00,                    //   INPUT (Data,Ary,Abs)
-		
-		// axis data
-		0x05, 0x01,                    // 	USAGE_PAGE (Generic Desktop)
-		0x09, 0x30,                    //   USAGE (X)
-    0x09, 0x31,                    //   USAGE (Y)
-    0x09, 0x32,                    //   USAGE (Z)
-    0x09, 0x33,                    //   USAGE (Rx)
-    0x09, 0x34,                    //   USAGE (Ry)
-    0x09, 0x35,                    //   USAGE (Rz)
-		0x09, 0x36,                    //   USAGE (Slider)
-		0x09, 0x36,                    //  	USAGE (Slider)
-    0x16, 0x01, 0x80,              //  	LOGICAL_MINIMUM (-32767)
-    0x26, 0xFF, 0x7F,						   //   LOGICAL_MAXIMUM (32767)
-    0x75, 0x10,                    //   REPORT_SIZE (16)
-    0x95, MAX_AXIS_NUM,       		 //   REPORT_COUNT (MAX_AXIS_NUM)
-    0x81, 0x02,                    //   INPUT (Data,Var,Abs)
-		
-		// POV data
-		0x09, 0x39, 									 //   USAGE (Hat switch)
-		0x15, 0x00, 									 //   LOGICAL_MINIMUM (0)
-		0x25, 0x07, 									 //   LOGICAL_MAXIMUM (7)
-		0x35, 0x00, 									 //   PHYSICAL_MINIMUM (0)
-		0x46, 0x3B, 0x01,							 //   PHYSICAL_MAXIMUM (315)
-		0x65, 0x12, 									 //   UNIT (SI Rot:Angular Pos) 
-		0x75, 0x08, 									 //   REPORT_SIZE (8) 
-		0x95, 0x01, 								   //   REPORT_COUNT (1)
-		0x81, 0x02, 									 //   INPUT (Data,Var,Abs)
-		0x09, 0x39, 									 //   USAGE (Hat switch)
-		0x81, 0x02, 									 //   INPUT (Data,Var,Abs)
-		0x09, 0x39, 									 //   USAGE (Hat switch)
-		0x81, 0x02, 									 //   INPUT (Data,Var,Abs)
-		0x09, 0x39, 									 //   USAGE (Hat switch)
-		0x81, 0x02, 									 //   INPUT (Data,Var,Abs)
-
-		0xc0,                           // END_COLLECTION
-  }; /* CustomHID_ReportDescriptor */
-	
-	  ; /* CustomHID_ConfigDescriptor */
 uint8_t CustomHID_ReportDescriptor[CustomHID_SIZ_REPORT_DESC] =
   {                    
     0x06, 0x00, 0xFF,              // USAGE_PAGE (Vendor Defined 1)

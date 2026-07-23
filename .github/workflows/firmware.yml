@@ -38,3 +38,25 @@ jobs:
           path: armgcc/build/${{ matrix.target }}/install/*.bin
           if-no-files-found: error
           retention-days: 30
+
+  host-tests:
+    name: Host logic tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build and run host tests
+        run: |
+          mkdir -p build
+          # Each test compiles the REAL firmware source against tests/stubs +
+          # application/Inc and runs on the host (no hardware). Exit 0 = pass.
+          gcc -std=c11 -Wall -Wextra -I tests/stubs -I application/Inc \
+            tests/test_gpio_expander_fold.c application/Src/gpio_expander.c \
+            -o build/test_gpio_expander_fold
+          ./build/test_gpio_expander_fold
+          # POV Hat descriptor Null-State guard (issue #81).
+          gcc -std=c11 -Wall -Wextra -I tests/stubs -I application/Inc \
+            tests/test_pov_descriptor.c application/Src/joy_report_desc.c \
+            -o build/test_pov_descriptor
+          ./build/test_pov_descriptor

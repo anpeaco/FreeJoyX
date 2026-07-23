@@ -91,10 +91,15 @@ uint16_t BuildJoyReportDesc(uint8_t *buf, const app_config_t *cfg)
 			buf[i++] = 0x65; buf[i++] = 0x12;
 			buf[i++] = 0x75; buf[i++] = 0x08;
 			buf[i++] = 0x95; buf[i++] = 0x01;
-			buf[i++] = 0x81; buf[i++] = 0x02;
+			/* INPUT (Data,Var,Abs,Null): bit 6 (Null State) is set so the
+			 * centered value (0xFF, deliberately outside the 0..7 range --
+			 * see POVsGet in buttons.c) is understood by the host as
+			 * "no direction / centered" rather than an illegal value.
+			 * Without this flag Windows ignores the hat entirely (issue #81). */
+			buf[i++] = 0x81; buf[i++] = 0x42;
 			for (uint8_t j = 1; j < cfg->pov_cnt; j++) {
 				buf[i++] = 0x09; buf[i++] = 0x39;
-				buf[i++] = 0x81; buf[i++] = 0x02;
+				buf[i++] = 0x81; buf[i++] = 0x42;   /* INPUT (Data,Var,Abs,Null) */
 			}
 		}
 	}
