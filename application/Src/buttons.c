@@ -40,6 +40,19 @@ uint8_t												a2b_first = 0;
 uint8_t												a2b_last = 0;
 volatile uint8_t							button_mutex = 0;
 
+/* A shift button is processed through LogicalButtonProcessState with num == 0xFF.
+ * That sentinel is only safe for the four types the configurator restricts shift
+ * slots to; every other type (POV / RADIO / SEQUENTIAL_BUTTON / ENCODER / gesture)
+ * would make the state machine index the MAIN buttons/POV arrays at 0xFF -- out of
+ * bounds. A config produced by the configurator can never contain such a shift,
+ * but a hand-edited or corrupted config could; this guard keeps the firmware
+ * memory-safe on its own instead of trusting the configurator's UI filter. */
+static inline uint8_t ShiftTypeIsSafe(button_type_t type)
+{
+	return type == BUTTON_NORMAL || type == BUTTON_TOGGLE ||
+	       type == LOGIC         || type == SEQUENTIAL_TOGGLE;
+}
+
 /* Per-physical gesture state machine (issue anpeaco/FreeJoyX#21).
  *
  * Replaces the previous per-slot TAP / DOUBLE_TAP / NORMAL state machines
@@ -1320,19 +1333,30 @@ void ButtonsReadLogical (dev_config_t * p_dev_config)
 	 * then OR each into the shifts_state bitmap. Shift buttons live in a
 	 * dedicated array (dev_config.shift_buttons[]) -- never in the HID report,
 	 * never counted against the 128 button slots. The configurator restricts
-	 * their type to NORMAL / TOGGLE* / LOGIC / SEQUENTIAL_TOGGLE; num == 0xFF
+	 * their type to NORMAL / TOGGLE / LOGIC / SEQUENTIAL_TOGGLE; num == 0xFF
 	 * keeps them out of the gesture branch (has_tap/has_dt). Of the cross-slot
 	 * cases only SEQUENTIAL_TOGGLE is num-safe (it array-selects on 0xFF); the
-	 * others (POV/RADIO/SEQUENTIAL_BUTTON) would touch the main arrays, so the
-	 * configurator's type filter -- not the firmware -- is what keeps them off
-	 * shifts. */
+	 * others (POV/RADIO/SEQUENTIAL_BUTTON) would touch the main arrays at 0xFF.
+	 * The ShiftTypeIsSafe() guard below now enforces the same restriction in
+	 * firmware, so a corrupted config can't reach that out-of-bounds path even if
+	 * it bypasses the configurator's filter. */
 	for (uint8_t i=0; i<MAX_SHIFTS_NUM; i++)
 	{
-		if (p_dev_config->shift_buttons[i].physical_num >= 0)
+		/* Defense-in-depth: only run the 0xFF shift path for the types it is safe
+		 * for (see ShiftTypeIsSafe). An out-of-set type in a corrupted config would
+		 * otherwise index the main arrays out of bounds; treat it as an inactive
+		 * shift instead of trusting the configurator to have filtered it. */
+		if (p_dev_config->shift_buttons[i].physical_num >= 0 &&
+			ShiftTypeIsSafe(p_dev_config->shift_buttons[i].type))
 		{
 			shift_buttons_state[i].prev_physical_state = shift_buttons_state[i].curr_physical_state;
 			shift_buttons_state[i].curr_physical_state = physical_buttons_state[p_dev_config->shift_buttons[i].physical_num].current_state;
 			LogicalButtonProcessState(&shift_buttons_state[i], pov_pos, p_dev_config, &p_dev_config->shift_buttons[i], 0xFF);
+		}
+		else
+		{
+			/* Unassigned or unsafe-typed slot contributes no shift. */
+			shift_buttons_state[i].current_state = 0;
 		}
 	}
 	shifts_state = 0;
