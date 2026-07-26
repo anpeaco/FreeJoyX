@@ -32,6 +32,9 @@
 // TODO: library ws2812b uses a lot of memory
 // in the future, it should be replaced with this one https://github.com/Crazy-Geeks/STM32-ARGB-DMA
 // it needs to be adapted from HAL to SPL
+// [Reviewed 2026-07-26] Acknowledged RAM cost of the WS2812B driver, with a concrete
+// replacement path noted. Low priority -- only worth doing if F103 RAM pressure forces
+// it. No action now.
 
 void LedEffect_Init(dev_config_t * p_dev_config);
 void SetEffect(argb_led_t *leds, unsigned count, uint8_t effect);

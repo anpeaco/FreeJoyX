@@ -80,6 +80,10 @@ ring_buf_t * RB_GetPtr()
 
 // TODO: in the current implementation, we are waiting for the next packet to be received
 // this freezes all other calculations and needs to be fixed!!
+// [Reviewed 2026-07-26] Confirmed a genuine blocking read (NOT benign): SH_Read()
+// stalls the caller until a packet arrives. It lives in the SimHub path, which is a
+// parked/optional feature, so it's deferred rather than fixed now. Revisit if SimHub
+// is un-parked.
 // but it is not an easy task
 int16_t SH_Read(void)//////////////////////////////////////////
 {
