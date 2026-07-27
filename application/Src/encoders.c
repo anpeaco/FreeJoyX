@@ -155,6 +155,13 @@ static const fast_encoder_pins_t fast_encoder_pins[MAX_FAST_ENCODER_NUM] = {
  * become N discrete presses instead of one held button. */
 #define ENC_QUEUE_CAP 16		// max pending steps -> bounds the post-spin tail
 #define ENC_QUEUE_GAP_MS 20		// OFF gap between queued pulses (capped short so a fast spin drains quickly; the ON pulse stays = encoder_press_time_ms for reliable sampling)
+#define ENC_QUEUE_DRAIN_MS 12	// ON-width cap while the queue still has pending detents. An isolated / final
+								// click keeps the full encoder_press_time_ms so a single slow click is wide
+								// enough for a slow consumer to sample; but mid-burst the host is actively
+								// polling, so a short pulse registers fine and lets a long fast spin drain
+								// in a fraction of the time (no ~2 s tail from wide pulses x deep queue).
+								// Derived, not a wire-format field: the effective drain width is
+								// min(encoder_press_time_ms, ENC_QUEUE_DRAIN_MS).
 static uint8_t enc_pend_a[MAX_ENCODERS_NUM];		// pending CW pulses (fire pin_a)
 static uint8_t enc_pend_b[MAX_ENCODERS_NUM];		// pending CCW pulses (fire pin_b)
 static int32_t enc_prev_cnt[MAX_ENCODERS_NUM];		// last-seen encoders_state.cnt
@@ -474,9 +481,20 @@ void EncoderProcess (logical_buttons_state_t * button_state_buf, dev_config_t * 
 				}
 				else if (millis >= enc_gap_end[i])
 				{
-					// idle + gap elapsed: launch the next queued pulse
-					if (enc_pend_a[i] > 0)      { enc_pend_a[i]--; enc_active[i] = 1; enc_pulse_end[i] = millis + pulse; }
-					else if (enc_pend_b[i] > 0) { enc_pend_b[i]--; enc_active[i] = 2; enc_pulse_end[i] = millis + pulse; }
+					// idle + gap elapsed: launch the next queued pulse. Use a SHORT width
+					// while more detents are still queued (fast, snappy drain) and the full
+					// press width only for the last / isolated pulse (reliable single click).
+					const uint16_t drain = (pulse < ENC_QUEUE_DRAIN_MS) ? pulse : ENC_QUEUE_DRAIN_MS;
+					if (enc_pend_a[i] > 0)
+					{
+						enc_pend_a[i]--; enc_active[i] = 1;
+						enc_pulse_end[i] = millis + ((enc_pend_a[i] > 0 || enc_pend_b[i] > 0) ? drain : pulse);
+					}
+					else if (enc_pend_b[i] > 0)
+					{
+						enc_pend_b[i]--; enc_active[i] = 2;
+						enc_pulse_end[i] = millis + ((enc_pend_a[i] > 0 || enc_pend_b[i] > 0) ? drain : pulse);
+					}
 				}
 
 				// Own the buttons: on only while their pulse is active (this also
