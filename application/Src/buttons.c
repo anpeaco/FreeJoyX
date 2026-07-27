@@ -788,15 +788,28 @@ void LogicalButtonProcessState (logical_buttons_state_t * p_button_state, uint8_
 				// Boolean expression over physical button inputs. Source A
 				// is carried in the slot's physical_num (reused field);
 				// Source B is in src_b (binary ops) and ignored for NOT.
-				// Debounce duration is the single global dev_config.logic_debounce_ms
-				// (shared by every LOGIC button + shift); 0 = commit immediately.
-				// delay_timer is no longer read for LOGIC.
+				//
+				// Sources read the DEBOUNCED physical state
+				// (physical_buttons_state[].current_state) -- the SAME value
+				// BUTTON_NORMAL slots consume -- so a LOGIC slot and a NORMAL
+				// slot on the same physical change in lockstep, both inheriting
+				// button_debounce_ms. (These previously read raw_buttons_data
+				// directly with no debounce, so LOGIC fired on the raw edge
+				// ~button_debounce_ms before a NORMAL sister settled.)
+				//
+				// The LOGIC debounce below applies on top of that, as an
+				// additional debounce of the computed RESULT -- useful for
+				// binary-encoded rotary switches that flash adjacent codes
+				// mid-throw. Its duration is the single global
+				// dev_config.logic_debounce_ms (shared by every LOGIC button +
+				// shift); 0 = commit immediately. delay_timer is no longer read
+				// for LOGIC.
 				int8_t a_idx = pbtn->physical_num;
 				int8_t b_idx = pbtn->src_b;
 
 				// Out-of-range / unassigned source -> treat as not pressed.
-				uint8_t a = (a_idx >= 0 && a_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[a_idx] != 0) : 0;
-				uint8_t b = (b_idx >= 0 && b_idx < MAX_BUTTONS_NUM) ? (raw_buttons_data[b_idx] != 0) : 0;
+				uint8_t a = (a_idx >= 0 && a_idx < MAX_BUTTONS_NUM) ? (physical_buttons_state[a_idx].current_state != 0) : 0;
+				uint8_t b = (b_idx >= 0 && b_idx < MAX_BUTTONS_NUM) ? (physical_buttons_state[b_idx].current_state != 0) : 0;
 
 				uint8_t computed = 0;
 				switch (pbtn->op)
